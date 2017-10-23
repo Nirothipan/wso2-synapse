@@ -32,17 +32,35 @@ import org.apache.synapse.config.Entry;
 import org.apache.synapse.config.SynapseConfigUtils;
 import org.apache.synapse.core.SynapseEnvironment;
 import org.apache.synapse.mediators.AbstractMediator;
-import org.apache.synapse.mediators.Value;
 import org.apache.synapse.mediators.MediatorProperty;
-import org.apache.synapse.util.jaxp.*;
+import org.apache.synapse.mediators.Value;
+import org.apache.synapse.util.jaxp.DOOMResultBuilderFactory;
+import org.apache.synapse.util.jaxp.DOOMSourceBuilderFactory;
+import org.apache.synapse.util.jaxp.ResultBuilder;
+import org.apache.synapse.util.jaxp.ResultBuilderFactory;
+import org.apache.synapse.util.jaxp.SourceBuilder;
+import org.apache.synapse.util.jaxp.SourceBuilderFactory;
+import org.apache.synapse.util.jaxp.StreamResultBuilder;
+import org.apache.synapse.util.jaxp.StreamResultBuilderFactory;
+import org.apache.synapse.util.jaxp.StreamSourceBuilderFactory;
 import org.apache.synapse.util.resolver.CustomJAXPURIResolver;
 import org.apache.synapse.util.resolver.ResourceMap;
 import org.apache.synapse.util.xpath.SourceXPathSupport;
 import org.apache.synapse.util.xpath.SynapseXPath;
 
-import javax.xml.transform.*;
+import javax.xml.transform.ErrorListener;
+import javax.xml.transform.OutputKeys;
+import javax.xml.transform.Templates;
+import javax.xml.transform.Transformer;
+import javax.xml.transform.TransformerConfigurationException;
+import javax.xml.transform.TransformerException;
+import javax.xml.transform.TransformerFactory;
 import java.nio.charset.Charset;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Hashtable;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
 
 /**
  * The XSLT mediator performs an XSLT transformation requested, using
@@ -59,7 +77,7 @@ import java.util.*;
  *
  * <p> Note: Set the TransformerFactory system property to generate and use translets
  *  -Djavax.xml.transform.TransformerFactory=org.apache.xalan.xsltc.trax.TransformerFactoryImpl
- * 
+ *
  */
 public class XSLTMediator extends AbstractMediator {
 
@@ -76,7 +94,7 @@ public class XSLTMediator extends AbstractMediator {
                 this.synLog = null;
             }
         }
-        
+
         public void warning(TransformerException e) throws TransformerException {
             if (XSLT_TRANSFORMATION_ACTIVITY.equals(this.activity) && synLog.isTraceOrDebugEnabled()) {
                 synLog.traceOrDebugWarn("Warning encountered during " + this.activity + " : " + e);
@@ -84,7 +102,7 @@ public class XSLTMediator extends AbstractMediator {
                 logger.warn("Warning encountered during " + this.activity + " : " + e);
             }
         }
-        
+
         public void error(TransformerException e) throws TransformerException {
             if (XSLT_TRANSFORMATION_ACTIVITY.equals(this.activity)) {
                 this.synLog.error("Error occurred in " + this.activity + " : " + e);
@@ -93,7 +111,7 @@ public class XSLTMediator extends AbstractMediator {
             }
             throw e;
         }
-        
+
         public void fatalError(TransformerException e) throws TransformerException {
             if (XSLT_TRANSFORMATION_ACTIVITY.equals(this.activity)) {
                 this.synLog.error("Fatal error occurred in " + this.activity + " : " + e);
@@ -103,20 +121,20 @@ public class XSLTMediator extends AbstractMediator {
             throw e;
         }
     }
-    
+
     /**
      * The feature for which deciding switching between DOM and Stream during the
      * transformation process
      */
     public static final String USE_DOM_SOURCE_AND_RESULTS =
         "http://ws.apache.org/ns/synapse/transform/feature/dom";
-    
+
     /**
      * The name of the attribute that allows to specify the {@link SourceBuilderFactory}.
      */
     public static final String SOURCE_BUILDER_FACTORY =
         "http://ws.apache.org/ns/synapse/transform/attribute/sbf";
-    
+
     /**
      * The name of the attribute that allows to specify the {@link ResultBuilderFactory}.
      */
@@ -129,7 +147,13 @@ public class XSLTMediator extends AbstractMediator {
     public static final String XSLT_TRANSFORMATION_ACTIVITY = "XSLT transformation";
 
     public static final String STYLESHEET_PARSING_ACTIVITY = "stylesheet parsing";
-    
+
+    /*
+     * IF the user have set this property, the XSLTMediator does not build the result xml, instead it will be stored as
+     * string property with name givent in "target" attribute
+     */
+    public static final String TRANSFORM_XSLT_RESULT_DISABLE_BUILD = "transform.xslt.result.disableBuild";
+
     /**
      * The resource key which refers to the XSLT to be used for the transformation
      * supports both static and dynamic(xpath) keys
@@ -142,7 +166,7 @@ public class XSLTMediator extends AbstractMediator {
     private final SourceXPathSupport source = new SourceXPathSupport();
 
     /**
-     * The name of the message context property to store the transformation result  
+     * The name of the message context property to store the transformation result
      */
     private String targetPropertyName = null;
 
@@ -189,7 +213,7 @@ public class XSLTMediator extends AbstractMediator {
      * The source builder factory to use.
      */
     private SourceBuilderFactory sourceBuilderFactory = new StreamSourceBuilderFactory();
-    
+
     /**
      * The result builder factory to use.
      */
@@ -291,7 +315,7 @@ public class XSLTMediator extends AbstractMediator {
             }
 
             transformer.setErrorListener(new ErrorListenerImpl(synLog, XSLT_TRANSFORMATION_ACTIVITY));
-            
+
             String outputMethod = transformer.getOutputProperty(OutputKeys.METHOD);
             String encoding = transformer.getOutputProperty(OutputKeys.ENCODING);
 
@@ -299,7 +323,7 @@ public class XSLTMediator extends AbstractMediator {
                 synLog.traceOrDebug("output method: " + outputMethod
                         + "; encoding: " + encoding);
             }
-            
+
             ResultBuilderFactory.Output output;
             if ("text".equals(outputMethod)) {
                 synLog.traceOrDebug("Processing non SOAP/XML (text) transformation result");
@@ -309,17 +333,17 @@ public class XSLTMediator extends AbstractMediator {
             } else {
                 output = ResultBuilderFactory.Output.ELEMENT;
             }
-            
+
             SynapseEnvironment synEnv = synCtx.getEnvironment();
             ResultBuilder resultBuilder =
                     resultBuilderFactory.createResultBuilder(synEnv, output);
             SourceBuilder sourceBuilder = sourceBuilderFactory.createSourceBuilder(synEnv);
-            
+
             if (synLog.isTraceOrDebugEnabled()) {
                 synLog.traceOrDebug("Using " + sourceBuilder.getClass().getName());
                 synLog.traceOrDebug("Using " + resultBuilder.getClass().getName());
             }
-            
+
             try {
                 transformer.transform(sourceBuilder.getSource((OMElement)sourceNode),
                                       resultBuilder.getResult());
@@ -328,6 +352,25 @@ public class XSLTMediator extends AbstractMediator {
             }
 
             synLog.traceOrDebug("Transformation completed - processing result");
+
+            /**
+             * If user have set transform.xslt.result.disableBuild property to true, we do not build the message to
+             * OMElement,
+             */
+            if (targetPropertyName != null && resultBuilder instanceof StreamResultBuilder &&
+                    synCtx.getProperty(TRANSFORM_XSLT_RESULT_DISABLE_BUILD) != null &&
+                    synCtx.getProperty(TRANSFORM_XSLT_RESULT_DISABLE_BUILD) instanceof String &&
+                    "true".equalsIgnoreCase((String) synCtx.getProperty(TRANSFORM_XSLT_RESULT_DISABLE_BUILD))) {
+
+                    // add result XML string as a message context property to the message
+                    if (synLog.isTraceOrDebugEnabled()) {
+                        synLog.traceOrDebug("Adding result string as message context property : " +
+                                targetPropertyName);
+                    }
+
+                    synCtx.setProperty(targetPropertyName, ((StreamResultBuilder) resultBuilder).getResultAsString());
+                    return;
+            }
 
             // get the result OMElement
             OMElement result = null;
@@ -401,7 +444,7 @@ public class XSLTMediator extends AbstractMediator {
      * Create a XSLT template object and assign it to the cachedTemplates variable
      * @param synCtx current message
      * @param synLog logger to use
-     * @param generatedXsltKey evaluated xslt key(real key value) for dynamic or static key 
+     * @param generatedXsltKey evaluated xslt key(real key value) for dynamic or static key
      * @return cached template
      */
     private Templates createTemplate(MessageContext synCtx, SynapseLog synLog, String generatedXsltKey) {
@@ -475,13 +518,13 @@ public class XSLTMediator extends AbstractMediator {
     public void addProperty(MediatorProperty p) {
         properties.add(p);
     }
-    
+
     /**
      * Set the properties defined in the mediator as parameters on the stylesheet.
-     * 
+     *
      * @param transformer Transformer instance
      * @param synCtx MessageContext instance
-     * @param synLog SynapseLog instance 
+     * @param synLog SynapseLog instance
      */
     private void applyProperties(Transformer transformer, MessageContext synCtx,
                                  SynapseLog synLog) {
@@ -507,15 +550,15 @@ public class XSLTMediator extends AbstractMediator {
             }
         }
     }
-    
+
     /**
      * Add a feature to be set on the {@link TransformerFactory} used by this mediator instance.
      * This method can also be used to enable some Synapse specific optimizations and
      * enhancements as described in the documentation of this class.
-     * 
+     *
      * @param featureName The name of the feature
      * @param isFeatureEnable the desired state of the feature
-     * 
+     *
      * @see TransformerFactory#setFeature(String, boolean)
      * @see XSLTMediator
      */
@@ -548,10 +591,10 @@ public class XSLTMediator extends AbstractMediator {
      * Add an attribute to be set on the {@link TransformerFactory} used by this mediator instance.
      * This method can also be used to enable some Synapse specific optimizations and
      * enhancements as described in the documentation of this class.
-     * 
+     *
      * @param name The name of the feature
      * @param value should this feature enable?
-     * 
+     *
      * @see TransformerFactory#setAttribute(String, Object)
      * @see XSLTMediator
      */
@@ -638,5 +681,5 @@ public class XSLTMediator extends AbstractMediator {
 
 }
 
-	
+
 
