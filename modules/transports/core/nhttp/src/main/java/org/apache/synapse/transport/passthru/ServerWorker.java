@@ -94,6 +94,8 @@ public class ServerWorker implements Runnable {
     private boolean isRestDispatching = true;
     
     private OutputStream os; //only used for WSDL  requests..
+
+    private static final String HTTP_METHOD = "HTTP_METHOD";
   
     public ServerWorker(final SourceRequest request,
                         final SourceConfiguration sourceConfiguration,final OutputStream os) {
@@ -188,6 +190,12 @@ public class ServerWorker implements Runnable {
         // recipient should consider it as application/octet-stream (rfc2616)
         if (contentType == null || contentType.isEmpty()) {
             contentType = PassThroughConstants.APPLICATION_OCTET_STREAM;
+        }
+        //        This need to be fixed properly
+        if (msgContext.getProperty(HTTP_METHOD).equals(HTTPConstants.HTTP_METHOD_GET) || (
+                msgContext.getProperty(HTTP_METHOD).equals(HTTPConstants.HEADER_DELETE) && ("0")
+                        .equals(msgContext.getProperty(PassThroughConstants.HTTP_CONTENT_LENGTH).toString()))) {
+            contentType = HTTPConstants.MEDIA_TYPE_X_WWW_FORM;
         }
         if (HTTPConstants.MEDIA_TYPE_X_WWW_FORM.equals(contentType) ||
                 (PassThroughConstants.APPLICATION_OCTET_STREAM.equals(contentType) && contentTypeHdr == null)) {
