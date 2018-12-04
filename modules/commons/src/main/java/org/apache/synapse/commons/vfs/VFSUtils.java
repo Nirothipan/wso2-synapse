@@ -48,6 +48,7 @@ import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Random;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -504,20 +505,48 @@ public class VFSUtils {
         if (scheme == null) {
             return null;
         }
+        Map<String, String> schemeFileOptions = parseSchemeFileOptions(scheme, fileURI);
+        try {
+            addOptions(scheme, schemeFileOptions, params);
+        } catch (AxisFault axisFault) {
+            log.error("Error while loading VFS parameter. " + axisFault.getMessage());
+        }
+        return schemeFileOptions;
+    }
 
+
+    private static Map<String, String> parseSchemeFileOptions(String scheme, String fileURI) {
         HashMap<String, String> schemeFileOptions = new HashMap<String, String>();
         schemeFileOptions.put(VFSConstants.SCHEME, scheme);
         try {
             Map<String, String> queryParams = UriParser.extractQueryParams(fileURI);
             schemeFileOptions.putAll(queryParams);
-            addOptions(scheme, schemeFileOptions, params);
-        } catch (AxisFault axisFault) {
-            log.error("Error while loading VFS parameter. " + axisFault.getMessage());
         } catch (FileSystemException e) {
             log.error("Error while loading scheme query params", e);
         }
-
         return schemeFileOptions;
+    }
+
+    public static Map<String, String> parseSchemeFileOptions(String fileURI, Properties vfsProperties) {
+        String scheme = UriParser.extractScheme(fileURI);
+        if (scheme == null) {
+            return null;
+        }
+        Map<String, String> schemeFileOptions = parseSchemeFileOptions(scheme, fileURI);
+        addOptions(scheme, schemeFileOptions, vfsProperties);
+        return schemeFileOptions;
+    }
+
+    private static void addOptions(String scheme, Map<String, String> schemeFileOptions, Properties vfsProperties) {
+        if (scheme.equals(VFSConstants.SCHEME_SFTP)) {
+            for (VFSConstants.SFTP_FILE_OPTION option : VFSConstants.SFTP_FILE_OPTION.values()) {
+                String strValue = vfsProperties.getProperty(VFSConstants.SFTP_PREFIX
+                                                            + WordUtils.capitalize(option.toString()));
+                if (strValue != null && !strValue.isEmpty()) {
+                    schemeFileOptions.put(option.toString(), strValue);
+                }
+            }
+        }
     }
 
     private static void addOptions(String scheme, Map<String, String> schemeFileOptions, ParameterInclude params) throws AxisFault {
