@@ -18,16 +18,6 @@
 */
 package org.apache.synapse.commons.vfs;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.net.InetAddress;
-import java.net.UnknownHostException;
-import java.text.SimpleDateFormat;
-import java.util.*;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-
 import org.apache.axis2.AxisFault;
 import org.apache.axis2.context.MessageContext;
 import org.apache.axis2.description.Parameter;
@@ -37,15 +27,38 @@ import org.apache.commons.lang.WordUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.commons.net.ftp.FTP;
-import org.apache.commons.vfs2.*;
+import org.apache.commons.vfs2.FileContent;
+import org.apache.commons.vfs2.FileObject;
+import org.apache.commons.vfs2.FileSystemException;
+import org.apache.commons.vfs2.FileSystemManager;
+import org.apache.commons.vfs2.FileSystemOptions;
 import org.apache.commons.vfs2.provider.UriParser;
+import org.apache.commons.vfs2.provider.ftp.FtpFileSystemConfigBuilder;
+import org.apache.commons.vfs2.provider.ftps.FtpsDataChannelProtectionLevel;
+import org.apache.commons.vfs2.provider.ftps.FtpsFileSystemConfigBuilder;
 import org.apache.commons.vfs2.util.DelegatingFileSystemOptionsBuilder;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
+import java.text.SimpleDateFormat;
+import java.util.Arrays;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Random;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class VFSUtils {
 
     private static final Log log = LogFactory.getLog(VFSUtils.class);
 
     private static final String STR_SPLITER = ":";
+
+    private static final String LOCK_FILE_SUFFIX = ".lock";
     
     /**
      * URL pattern
@@ -56,6 +69,49 @@ public class VFSUtils {
      * Password pattern
      */
     private static final Pattern PASSWORD_PATTERN = Pattern.compile(":(?:[^/]+)@");
+
+    private static final Random randomNumberGenerator = new Random();
+
+    /**
+     * SSL Keystore.
+     */
+    private static final String KEY_STORE = "vfs.ssl.keystore";
+
+    /**
+     * SSL Truststore.
+     */
+    private static final String TRUST_STORE = "vfs.ssl.truststore";
+
+    /**
+     * SSL Keystore password.
+     */
+    private static final String KS_PASSWD = "vfs.ssl.kspassword";
+
+    /**
+     * SSL Truststore password.
+     */
+    private static final String TS_PASSWD = "vfs.ssl.tspassword";
+
+    /**
+     * SSL Key password.
+     */
+    private static final String KEY_PASSWD = "vfs.ssl.keypassword";
+
+    /**
+     * Passive mode
+     */
+    public static final String PASSIVE_MODE = "vfs.passive";
+
+    /**
+     * FTPS implicit mode
+     */
+    public static final String IMPLICIT_MODE = "vfs.implicit";
+
+    public static final String PROTECTION_MODE = "vfs.protection";
+
+
+    private VFSUtils() {
+    }
 
     /**
      * Get a String property from FileContent message
@@ -112,7 +168,8 @@ public class VFSUtils {
      * @param fso represents file system options used when resolving file from file system manager.
      * @return boolean true if the lock has been acquired or false if not
      */
-    public synchronized static boolean acquireLock(FileSystemManager fsManager, FileObject fo, FileSystemOptions fso, boolean isListener) {
+    public static synchronized boolean acquireLock(FileSystemManager fsManager, FileObject fo,
+                                                   FileSystemOptions fso, boolean isListener) {
         return acquireLock(fsManager, fo, null, fso, isListener);
     }
 
@@ -129,23 +186,9 @@ public class VFSUtils {
      *            represents file system options used when resolving file from file system manager.
      * @return boolean true if the lock has been acquired or false if not
      */
-    public synchronized static boolean acquireLock(FileSystemManager fsManager, FileObject fo, VFSParamDTO paramDTO,
+    public static synchronized boolean acquireLock(FileSystemManager fsManager, FileObject fo, VFSParamDTO paramDTO,
                                                    FileSystemOptions fso, boolean isListener) {
-        
-        // generate a random lock value to ensure that there are no two parties
-        // processing the same file
-        Random random = new Random();
-        // Lock format random:hostname:hostip:time
-        String strLockValue = String.valueOf(random.nextLong());
-        try {
-            strLockValue += STR_SPLITER + InetAddress.getLocalHost().getHostName();
-            strLockValue += STR_SPLITER + InetAddress.getLocalHost().getHostAddress();
-        } catch (UnknownHostException ue) {
-            if (log.isDebugEnabled()) {
-                log.debug("Unable to get the Hostname or IP.");
-            }
-        }
-        strLockValue += STR_SPLITER + (new Date()).getTime();
+        String strLockValue = getLockValue();
         byte[] lockValue = strLockValue.getBytes();
         FileObject lockObject = null;
 
@@ -153,12 +196,8 @@ public class VFSUtils {
             // check whether there is an existing lock for this item, if so it is assumed
             // to be processed by an another listener (downloading) or a sender (uploading)
             // lock file is derived by attaching the ".lock" second extension to the file name
-            String fullPath = fo.getName().getURI();
-            int pos = fullPath.indexOf("?");
-            if (pos != -1) {
-                fullPath = fullPath.substring(0, pos);
-            }            
-            lockObject = fsManager.resolveFile(fullPath + ".lock", fso);
+            String fullPath = getFullPath(fo);
+            lockObject = fsManager.resolveFile(fullPath + LOCK_FILE_SUFFIX, fso);
             if (lockObject.exists()) {
                 log.debug("There seems to be an external lock, aborting the processing of the file "
                         + maskURLPassword(fo.getName().getURI())
@@ -176,21 +215,8 @@ public class VFSUtils {
                         return false;
                     }
                 }
-                // write a lock file before starting of the processing, to ensure that the
-                // item is not processed by any other parties
-                lockObject.createFile();
-                OutputStream stream = lockObject.getContent().getOutputStream();
-                try {
-                    stream.write(lockValue);
-                    stream.flush();
-                    stream.close();
-                } catch (IOException e) {
-                    lockObject.delete();                 
-                    log.error("Couldn't create the lock file before processing the file "
-                            + maskURLPassword(fullPath), e);
+                if (!createLockFile(lockValue, lockObject, fullPath)) {
                     return false;
-                } finally {                  
-                    lockObject.close();
                 }
 
                 // check whether the lock is in place and is it me who holds the lock. This is
@@ -199,7 +225,7 @@ public class VFSUtils {
                 // as the written random lock value.
                 // NOTE: this may not be optimal but is sub optimal
                 FileObject verifyingLockObject = fsManager.resolveFile(
-                        fullPath + ".lock", fso);
+                        fullPath + LOCK_FILE_SUFFIX, fso);
                 if (verifyingLockObject.exists() && verifyLock(lockValue, verifyingLockObject)) {
                     return true;
                 }
@@ -218,7 +244,60 @@ public class VFSUtils {
         }
         return false;
     }
-    
+
+    private static String getFullPath(FileObject fo) {
+        String fullPath = fo.getName().getURI();
+        int pos = fullPath.indexOf('?');
+        if (pos != -1) {
+            fullPath = fullPath.substring(0, pos);
+        }
+        return fullPath;
+    }
+
+    private static boolean createLockFile(byte[] lockValue, FileObject lockObject, String fullPath)
+            throws FileSystemException {
+        // write a lock file before starting of the processing, to ensure that the
+        // item is not processed by any other parties
+        lockObject.createFile();
+        OutputStream stream = lockObject.getContent().getOutputStream();
+        try {
+            stream.write(lockValue);
+            stream.flush();
+            stream.close();
+        } catch (IOException e) {
+            lockObject.delete();
+            log.error("Couldn't create the lock file before processing the file "
+                    + maskURLPassword(fullPath), e);
+            return false;
+        } finally {
+            lockObject.close();
+        }
+        return true;
+    }
+
+    /**
+     * Generate a random lock value to ensure that there are no two parties processing the same file
+     * Lock format random:hostname:hostip:time
+     * @return lock value as a string
+     */
+    private static String getLockValue() {
+
+        StringBuilder lockValueBuilder = new StringBuilder();
+        lockValueBuilder.append(randomNumberGenerator.nextLong());
+        try {
+            lockValueBuilder.append(STR_SPLITER)
+                            .append(InetAddress.getLocalHost().getHostName())
+                            .append(STR_SPLITER)
+                            .append(InetAddress.getLocalHost().getHostAddress());
+        } catch (UnknownHostException ue) {
+            if (log.isDebugEnabled()) {
+                log.debug("Unable to get the Hostname or IP.");
+            }
+        }
+        lockValueBuilder.append(STR_SPLITER).append((new Date()).getTime());
+        return lockValueBuilder.toString();
+    }
+
     /**
      * Release a file item lock acquired either by the VFS listener or a sender
      *
@@ -230,11 +309,11 @@ public class VFSUtils {
         String fullPath = fo.getName().getURI();    
         
         try {	    
-            int pos = fullPath.indexOf("?");
+            int pos = fullPath.indexOf('?');
             if (pos > -1) {
                 fullPath = fullPath.substring(0, pos);
             }
-            FileObject lockObject = fsManager.resolveFile(fullPath + ".lock", fso);
+            FileObject lockObject = fsManager.resolveFile(fullPath + LOCK_FILE_SUFFIX, fso);
             if (lockObject.exists()) {
                 lockObject.delete();
             }
@@ -313,18 +392,14 @@ public class VFSUtils {
         return null;
     }
     
-    public synchronized static void markFailRecord(FileSystemManager fsManager, FileObject fo) {
+    public static synchronized void markFailRecord(FileSystemManager fsManager, FileObject fo) {
         
         // generate a random fail value to ensure that there are no two parties
         // processing the same file
         byte[] failValue = (Long.toString((new Date()).getTime())).getBytes();
         
         try {
-	        String fullPath = fo.getName().getURI();	
-            int pos = fullPath.indexOf("?");
-            if (pos != -1) {
-                fullPath = fullPath.substring(0, pos);
-            }
+            String fullPath = getFullPath(fo);
             FileObject failObject = fsManager.resolveFile(fullPath + ".fail");
             if (!failObject.exists()) {
             	failObject.createFile();
@@ -352,7 +427,7 @@ public class VFSUtils {
         try {
 	        String fullPath = fo.getName().getURI();
 	        String queryParams = "";
-            int pos = fullPath.indexOf("?");
+            int pos = fullPath.indexOf('?');
             if (pos > -1) {
                 queryParams = fullPath.substring(pos);
                 fullPath = fullPath.substring(0, pos);
@@ -370,7 +445,7 @@ public class VFSUtils {
     public static void releaseFail(FileSystemManager fsManager, FileObject fo) {
         try {
 	    String fullPath = fo.getName().getURI();	
-            int pos = fullPath.indexOf("?");
+            int pos = fullPath.indexOf('?');
             if (pos > -1) {
                 fullPath = fullPath.substring(0, pos);
             }
@@ -383,8 +458,8 @@ public class VFSUtils {
         }
     }    
     
-    private static boolean releaseLock(byte[] bLockValue, String sLockValue, FileObject lockObject,
-        Boolean autoLockReleaseSameNode, Long autoLockReleaseInterval) {
+    private static void releaseLock(byte[] bLockValue, String sLockValue, FileObject lockObject,
+                                       Boolean autoLockReleaseSameNode, Long autoLockReleaseInterval) {
         try {
             InputStream is = lockObject.getContent().getInputStream();
             byte[] val = new byte[bLockValue.length];
@@ -394,34 +469,34 @@ public class VFSUtils {
             // Lock format random:hostname:hostip:time
             String[] arrVal = strVal.split(":");
             String[] arrValNew = sLockValue.split(STR_SPLITER);
-            if (arrVal.length == 4 && arrValNew.length == 4) {
-                if (!autoLockReleaseSameNode
-                        || (arrVal[1].equals(arrValNew[1]) && arrVal[2].equals(arrValNew[2]))) {
-                    long lInterval = 0;
-                    try{
-                        lInterval = Long.parseLong(arrValNew[3]) - Long.parseLong(arrVal[3]);
-                    }catch(NumberFormatException nfe){}
-                    if (autoLockReleaseInterval == null
-                            || autoLockReleaseInterval <= lInterval) {
-                        try {
-                            lockObject.delete();
-                        } catch (Exception e) {
-                            log.warn("Unable to delete the lock file during auto release cycle.", e);
-                        } finally {
-                            lockObject.close();
-                        }
-                        return true;
-                    }
+            if (arrVal.length == 4 && arrValNew.length == 4
+                && (!autoLockReleaseSameNode || (arrVal[1].equals(arrValNew[1]) && arrVal[2].equals(arrValNew[2])))) {
+                long lInterval = 0;
+                try {
+                    lInterval = Long.parseLong(arrValNew[3]) - Long.parseLong(arrVal[3]);
+                } catch (NumberFormatException nfe) {
+                    // ignore
                 }
+                deleteLockFile(lockObject, autoLockReleaseInterval, lInterval);
             }
         } catch (FileSystemException e) {
             log.error("Couldn't verify the lock", e);
-            return false;
         } catch (IOException e) {
             log.error("Couldn't verify the lock", e);
-            return false;
         }
-        return false;
+    }
+
+    private static void deleteLockFile(FileObject lockObject, Long autoLockReleaseInterval, long lInterval)
+            throws FileSystemException {
+        if (autoLockReleaseInterval == null || autoLockReleaseInterval <= lInterval) {
+            try {
+                lockObject.delete();
+            } catch (Exception e) {
+                log.warn("Unable to delete the lock file during auto release cycle.", e);
+            } finally {
+                lockObject.close();
+            }
+        }
     }
 
     public static Map<String, String> parseSchemeFileOptions(String fileURI, ParameterInclude params) {
@@ -432,11 +507,14 @@ public class VFSUtils {
 
         HashMap<String, String> schemeFileOptions = new HashMap<String, String>();
         schemeFileOptions.put(VFSConstants.SCHEME, scheme);
-
         try {
+            Map<String, String> queryParams = UriParser.extractQueryParams(fileURI);
+            schemeFileOptions.putAll(queryParams);
             addOptions(scheme, schemeFileOptions, params);
         } catch (AxisFault axisFault) {
             log.error("Error while loading VFS parameter. " + axisFault.getMessage());
+        } catch (FileSystemException e) {
+            log.error("Error while loading scheme query params", e);
         }
 
         return schemeFileOptions;
@@ -462,13 +540,19 @@ public class VFSUtils {
         DelegatingFileSystemOptionsBuilder delegate = new DelegatingFileSystemOptionsBuilder(fsManager);
 
         if (VFSConstants.SCHEME_SFTP.equals(options.get(VFSConstants.SCHEME))) {
-            for (String key: options.keySet()) {
-                for (VFSConstants.SFTP_FILE_OPTION o: VFSConstants.SFTP_FILE_OPTION.values()) {
-                    if (key.equals(o.toString()) && null != options.get(key)) {
-                        delegate.setConfigString(opts, VFSConstants.SCHEME_SFTP, key.toLowerCase(), options.get(key));
+            for (Map.Entry<String, String> entry: options.entrySet()) {
+                for (VFSConstants.SFTP_FILE_OPTION option: VFSConstants.SFTP_FILE_OPTION.values()) {
+                    if (entry.getKey().equals(option.toString()) && null != entry.getValue()) {
+                        delegate.setConfigString(opts, VFSConstants.SCHEME_SFTP,
+                                                 entry.getKey().toLowerCase(),
+                                                 entry.getValue());
                     }
                 }
             }
+        } else if (VFSConstants.SCHEME_FTP.equals(options.get(VFSConstants.SCHEME))) {
+            addFtpConfigs(options, opts);
+        } else if (VFSConstants.SCHEME_FTPS.equals(options.get(VFSConstants.SCHEME))) {
+            addFtpsConfigs(options, opts);
         }
 
         if (options.get(VFSConstants.FILE_TYPE) != null) {
@@ -477,6 +561,52 @@ public class VFSUtils {
         }
 
         return opts;
+    }
+
+    private static void addFtpsConfigs(Map<String, String> options, FileSystemOptions opts) {
+        FtpsFileSystemConfigBuilder configBuilder = FtpsFileSystemConfigBuilder.getInstance();
+        boolean passiveMode = Boolean.parseBoolean(options.get(PASSIVE_MODE));
+        configBuilder.setPassiveMode(opts, passiveMode);
+        boolean implicitMode = Boolean.parseBoolean(options.get(IMPLICIT_MODE));
+        if (implicitMode) {
+            configBuilder.setFtpsType(opts, "implicit");
+        }
+        String protectionMode = options.get(PROTECTION_MODE);
+        if ("P".equalsIgnoreCase(protectionMode)) {
+            configBuilder.setDataChannelProtectionLevel(opts, FtpsDataChannelProtectionLevel.P);
+        } else if ("C".equalsIgnoreCase(protectionMode)) {
+            configBuilder.setDataChannelProtectionLevel(opts, FtpsDataChannelProtectionLevel.C);
+        } else if ("S".equalsIgnoreCase(protectionMode)) {
+            configBuilder.setDataChannelProtectionLevel(opts, FtpsDataChannelProtectionLevel.S);
+        } else if ("E".equalsIgnoreCase(protectionMode)) {
+            configBuilder.setDataChannelProtectionLevel(opts, FtpsDataChannelProtectionLevel.E);
+        }
+        String keyStore = options.get(KEY_STORE);
+        if (keyStore != null) {
+            configBuilder.setKeyStore(opts, keyStore);
+        }
+        String trustStore = options.get(TRUST_STORE);
+        if (trustStore != null) {
+            configBuilder.setTrustStore(opts, trustStore);
+        }
+        String keyStorePassword = options.get(KS_PASSWD);
+        if (keyStorePassword != null) {
+            configBuilder.setKeyStorePW(opts, keyStorePassword);
+        }
+        String trustStorePassword = options.get(TS_PASSWD);
+        if (trustStorePassword != null) {
+            configBuilder.setTrustStorePW(opts, trustStorePassword);
+        }
+        String keyPassword = options.get(KEY_PASSWD);
+        if (keyPassword != null) {
+            configBuilder.setKeyPW(opts, keyPassword);
+        }
+    }
+
+    private static void addFtpConfigs(Map<String, String> options, FileSystemOptions opts) {
+        boolean passiveMode = Boolean.parseBoolean(options.get("vfs.passive"));
+        FtpFileSystemConfigBuilder.getInstance().setPassiveMode(opts, passiveMode);
+
     }
 
     private static Integer getFileType(String fileType) {
