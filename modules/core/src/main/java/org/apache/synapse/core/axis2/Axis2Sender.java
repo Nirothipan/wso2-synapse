@@ -192,6 +192,10 @@ public class Axis2Sender {
             }
 
             doSOAPFormatConversion(smc);
+
+            //isServerSide should always be true because we are sending the response back to the client
+            messageContext.setServerSide(true);
+
             // If the request arrives through an inbound endpoint
             if (smc.getProperty(SynapseConstants.IS_INBOUND) != null
                 && (Boolean) smc.getProperty(SynapseConstants.IS_INBOUND)) {

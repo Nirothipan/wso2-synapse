@@ -336,6 +336,9 @@ public class IterateMediator extends AbstractMediator implements ManagedLifecycl
 
         // set the envelope and mediate as specified in the target
         newCtx.setEnvelope(newEnvelope);
+        // Set isServerSide property in the cloned message context
+        ((Axis2MessageContext) newCtx).getAxis2MessageContext().setServerSide(
+                ((Axis2MessageContext) synCtx).getAxis2MessageContext().isServerSide());
 
         return newCtx;
     }
