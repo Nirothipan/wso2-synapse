@@ -458,7 +458,8 @@ public class VFSTransportListener extends AbstractPollingTransportListener<PollT
                             }
                             boolean runPostProcess = true;
                             if((!entry.isFileLockingEnabled()
-                                    || (entry.isFileLockingEnabled() && VFSUtils.acquireLock(fsManager, child, fso, true)))
+                                    || (entry.isFileLockingEnabled()
+                                        && acquireLock(fsManager, child, entry, fso, true)))
                                     && !isFailedRecord){
                                 //process the file
                                 try {
@@ -546,8 +547,8 @@ public class VFSTransportListener extends AbstractPollingTransportListener<PollT
                                 }
                         		Thread.sleep(iFileProcessingInterval);
                         	}catch(InterruptedException ie){
-                        	    Thread.currentThread().interrupt();
-                        		log.error("Unable to set the interval between file processors." + ie);
+                        	    log.error("Unable to set the interval between file processors." + ie);
+                                Thread.currentThread().interrupt();
                         	}
                         }else if(iFileProcessingCount != null && iFileProcessingCount <= processCount){
                         	break;
