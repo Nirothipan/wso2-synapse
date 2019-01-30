@@ -59,7 +59,9 @@ public class VFSUtils {
     private static final String STR_SPLITER = ":";
 
     private static final String LOCK_FILE_SUFFIX = ".lock";
-    
+
+    private static final String FAIL_FILE_SUFFIX = ".fail";
+
     /**
      * URL pattern
      */
@@ -290,7 +292,7 @@ public class VFSUtils {
                             .append(InetAddress.getLocalHost().getHostAddress());
         } catch (UnknownHostException ue) {
             if (log.isDebugEnabled()) {
-                log.debug("Unable to get the Hostname or IP.");
+                log.debug("Unable to get the Hostname or IP.", ue);
             }
         }
         lockValueBuilder.append(STR_SPLITER).append((new Date()).getTime());
@@ -354,9 +356,6 @@ public class VFSUtils {
             } else {
                 log.debug("The lock has been acquired by an another party");
             }
-        } catch (FileSystemException e) {
-            log.error("Couldn't verify the lock", e);
-            return false;
         } catch (IOException e) {
             log.error("Couldn't verify the lock", e);
             return false;
@@ -403,7 +402,7 @@ public class VFSUtils {
         
         try {
             String fullPath = getFullPath(fo);
-            FileObject failObject = fsManager.resolveFile(fullPath + ".fail", fso);
+            FileObject failObject = fsManager.resolveFile(fullPath + FAIL_FILE_SUFFIX, fso);
             if (!failObject.exists()) {
             	failObject.createFile();
             }
@@ -440,7 +439,7 @@ public class VFSUtils {
                 queryParams = fullPath.substring(pos);
                 fullPath = fullPath.substring(0, pos);
             }
-            FileObject failObject = fsManager.resolveFile(fullPath + ".fail" + queryParams, fso);
+            FileObject failObject = fsManager.resolveFile(fullPath + FAIL_FILE_SUFFIX + queryParams, fso);
             if (failObject.exists()) {
             	return true;
             }
@@ -451,13 +450,17 @@ public class VFSUtils {
     }
 
     public static void releaseFail(FileSystemManager fsManager, FileObject fo) {
+        releaseFail(fsManager, fo, null);
+    }
+
+    public static void releaseFail(FileSystemManager fsManager, FileObject fo, FileSystemOptions fso) {
         try {
 	    String fullPath = fo.getName().getURI();	
             int pos = fullPath.indexOf('?');
             if (pos > -1) {
                 fullPath = fullPath.substring(0, pos);
             }
-            FileObject failObject = fsManager.resolveFile(fullPath + ".fail");
+            FileObject failObject = fsManager.resolveFile(fullPath + FAIL_FILE_SUFFIX, fso);
             if (failObject.exists()) {
             	failObject.delete();
             }
@@ -473,6 +476,7 @@ public class VFSUtils {
             byte[] val = new byte[bLockValue.length];
             // noinspection ResultOfMethodCallIgnored
             is.read(val);
+            is.close();
             String strVal = new String(val);
             // Lock format random:hostname:hostip:time
             String[] arrVal = strVal.split(":");
@@ -486,9 +490,9 @@ public class VFSUtils {
                     // ignore
                 }
                 deleteLockFile(lockObject, autoLockReleaseInterval, lInterval);
+            } else {
+                lockObject.close();
             }
-        } catch (FileSystemException e) {
-            log.error("Couldn't verify the lock", e);
         } catch (IOException e) {
             log.error("Couldn't verify the lock", e);
         }
