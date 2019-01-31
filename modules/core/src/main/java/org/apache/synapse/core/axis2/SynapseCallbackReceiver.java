@@ -19,7 +19,6 @@
 
 package org.apache.synapse.core.axis2;
 
-import org.apache.axiom.om.OMException;
 import org.apache.axis2.AxisFault;
 import org.apache.axis2.Constants;
 import org.apache.axis2.addressing.AddressingConstants;
@@ -39,6 +38,7 @@ import org.apache.synapse.FaultHandler;
 import org.apache.synapse.ServerContextInformation;
 import org.apache.synapse.SynapseConstants;
 import org.apache.synapse.SynapseException;
+import org.apache.synapse.SynapseHandler;
 import org.apache.synapse.aspects.flow.statistics.collectors.CallbackStatisticCollector;
 import org.apache.synapse.aspects.flow.statistics.collectors.RuntimeStatisticCollector;
 import org.apache.synapse.carbonext.TenantInfoConfigurator;
@@ -57,6 +57,7 @@ import org.apache.synapse.transport.passthru.config.SourceConfiguration;
 import org.apache.synapse.transport.passthru.util.RelayUtils;
 import org.apache.synapse.util.ResponseAcceptEncodingProcessor;
 
+import java.util.Iterator;
 import java.util.Stack;
 import java.util.Timer;
 
@@ -432,7 +433,7 @@ public class SynapseCallbackReceiver extends CallbackReceiver {
                 }
 
                 if ((synapseInMessageContext.getEnvelope() != null) && synapseInMessageContext.getEnvelope().hasFault()) {
-                
+                    invokeHandlers(synapseInMessageContext);
                     if(log.isDebugEnabled()){
                         log.debug("SOAPFault found in response message, forcing endpoint "+
                                 successfulEndpoint.getName()+" to fail");
@@ -609,5 +610,34 @@ public class SynapseCallbackReceiver extends CallbackReceiver {
             clientOptions.setProperty(SynapseConstants.RAMPART_OUT_POLICY, null);
             clientOptions.setProperty(SynapseConstants.RAMPART_IN_POLICY, null);
         }
+    }
+
+    /**
+     * Invoke Synapse Handlers
+     *
+     * @param synCtx synapse message context
+     * @return whether flow should continue further
+     */
+    private boolean invokeHandlers(org.apache.synapse.MessageContext synCtx) {
+        Iterator<SynapseHandler> iterator = synCtx.getEnvironment().getSynapseHandlers().iterator();
+        if (iterator.hasNext()) {
+            Boolean isContinuationCall = (Boolean) synCtx.getProperty(SynapseConstants.CONTINUATION_CALL);
+            if (synCtx.isResponse() || (isContinuationCall != null && isContinuationCall)) {
+                while (iterator.hasNext()) {
+                    SynapseHandler handler = iterator.next();
+                    if (!handler.handleResponseInFlow(synCtx)) {
+                        return false;
+                    }
+                }
+            } else {
+                while (iterator.hasNext()) {
+                    SynapseHandler handler = iterator.next();
+                    if (!handler.handleRequestInFlow(synCtx)) {
+                        return false;
+                    }
+                }
+            }
+        }
+        return true;
     }
 }
