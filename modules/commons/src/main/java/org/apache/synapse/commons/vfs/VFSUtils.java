@@ -33,7 +33,6 @@ import org.apache.commons.vfs2.FileSystemException;
 import org.apache.commons.vfs2.FileSystemManager;
 import org.apache.commons.vfs2.FileSystemOptions;
 import org.apache.commons.vfs2.provider.UriParser;
-import org.apache.commons.vfs2.provider.ftp.FtpFileSystemConfigBuilder;
 import org.apache.commons.vfs2.provider.ftps.FtpsDataChannelProtectionLevel;
 import org.apache.commons.vfs2.provider.ftps.FtpsFileSystemConfigBuilder;
 import org.apache.commons.vfs2.util.DelegatingFileSystemOptionsBuilder;
@@ -60,7 +59,9 @@ public class VFSUtils {
     private static final String STR_SPLITER = ":";
 
     private static final String LOCK_FILE_SUFFIX = ".lock";
-    
+
+    private static final String FAIL_FILE_SUFFIX = ".fail";
+
     /**
      * URL pattern
      */
@@ -109,7 +110,6 @@ public class VFSUtils {
     public static final String IMPLICIT_MODE = "vfs.implicit";
 
     public static final String PROTECTION_MODE = "vfs.protection";
-
 
     private VFSUtils() {
     }
@@ -292,7 +292,7 @@ public class VFSUtils {
                             .append(InetAddress.getLocalHost().getHostAddress());
         } catch (UnknownHostException ue) {
             if (log.isDebugEnabled()) {
-                log.debug("Unable to get the Hostname or IP.");
+                log.debug("Unable to get the Hostname or IP.", ue);
             }
         }
         lockValueBuilder.append(STR_SPLITER).append((new Date()).getTime());
@@ -356,9 +356,6 @@ public class VFSUtils {
             } else {
                 log.debug("The lock has been acquired by an another party");
             }
-        } catch (FileSystemException e) {
-            log.error("Couldn't verify the lock", e);
-            return false;
         } catch (IOException e) {
             log.error("Couldn't verify the lock", e);
             return false;
@@ -392,8 +389,12 @@ public class VFSUtils {
         }
         return null;
     }
-    
+
     public static synchronized void markFailRecord(FileSystemManager fsManager, FileObject fo) {
+        markFailRecord(fsManager, fo, null);
+    }
+
+    public static synchronized void markFailRecord(FileSystemManager fsManager, FileObject fo, FileSystemOptions fso) {
         
         // generate a random fail value to ensure that there are no two parties
         // processing the same file
@@ -401,7 +402,7 @@ public class VFSUtils {
         
         try {
             String fullPath = getFullPath(fo);
-            FileObject failObject = fsManager.resolveFile(fullPath + ".fail");
+            FileObject failObject = fsManager.resolveFile(fullPath + FAIL_FILE_SUFFIX, fso);
             if (!failObject.exists()) {
             	failObject.createFile();
             }
@@ -424,7 +425,12 @@ public class VFSUtils {
             log.error("Cannot get the lock for the file : " + maskURLPassword(fo.getName().getURI()) + " before processing");
         }       
     }
+
     public static boolean isFailRecord(FileSystemManager fsManager, FileObject fo) {
+        return isFailRecord(fsManager, fo, null);
+    }
+
+    public static boolean isFailRecord(FileSystemManager fsManager, FileObject fo, FileSystemOptions fso) {
         try {
 	        String fullPath = fo.getName().getURI();
 	        String queryParams = "";
@@ -433,7 +439,7 @@ public class VFSUtils {
                 queryParams = fullPath.substring(pos);
                 fullPath = fullPath.substring(0, pos);
             }
-            FileObject failObject = fsManager.resolveFile(fullPath + ".fail" + queryParams);
+            FileObject failObject = fsManager.resolveFile(fullPath + FAIL_FILE_SUFFIX + queryParams, fso);
             if (failObject.exists()) {
             	return true;
             }
@@ -444,13 +450,17 @@ public class VFSUtils {
     }
 
     public static void releaseFail(FileSystemManager fsManager, FileObject fo) {
+        releaseFail(fsManager, fo, null);
+    }
+
+    public static void releaseFail(FileSystemManager fsManager, FileObject fo, FileSystemOptions fso) {
         try {
 	    String fullPath = fo.getName().getURI();	
             int pos = fullPath.indexOf('?');
             if (pos > -1) {
                 fullPath = fullPath.substring(0, pos);
             }
-            FileObject failObject = fsManager.resolveFile(fullPath + ".fail");
+            FileObject failObject = fsManager.resolveFile(fullPath + FAIL_FILE_SUFFIX, fso);
             if (failObject.exists()) {
             	failObject.delete();
             }
@@ -466,6 +476,7 @@ public class VFSUtils {
             byte[] val = new byte[bLockValue.length];
             // noinspection ResultOfMethodCallIgnored
             is.read(val);
+            is.close();
             String strVal = new String(val);
             // Lock format random:hostname:hostip:time
             String[] arrVal = strVal.split(":");
@@ -479,9 +490,9 @@ public class VFSUtils {
                     // ignore
                 }
                 deleteLockFile(lockObject, autoLockReleaseInterval, lInterval);
+            } else {
+                lockObject.close();
             }
-        } catch (FileSystemException e) {
-            log.error("Couldn't verify the lock", e);
         } catch (IOException e) {
             log.error("Couldn't verify the lock", e);
         }
@@ -506,17 +517,22 @@ public class VFSUtils {
             return null;
         }
         Map<String, String> schemeFileOptions = parseSchemeFileOptions(scheme, fileURI);
-        try {
-            addOptions(scheme, schemeFileOptions, params);
-        } catch (AxisFault axisFault) {
-            log.error("Error while loading VFS parameter. " + axisFault.getMessage());
-        }
+        addOptions(schemeFileOptions, params);
         return schemeFileOptions;
     }
 
+    public static Map<String, String> parseSchemeFileOptions(String fileURI, Properties vfsProperties) {
+        String scheme = UriParser.extractScheme(fileURI);
+        if (scheme == null) {
+            return null;
+        }
+        Map<String, String> schemeFileOptions = parseSchemeFileOptions(scheme, fileURI);
+        addOptions(schemeFileOptions, vfsProperties);
+        return schemeFileOptions;
+    }
 
     private static Map<String, String> parseSchemeFileOptions(String scheme, String fileURI) {
-        HashMap<String, String> schemeFileOptions = new HashMap<String, String>();
+        HashMap<String, String> schemeFileOptions = new HashMap<>();
         schemeFileOptions.put(VFSConstants.SCHEME, scheme);
         try {
             Map<String, String> queryParams = UriParser.extractQueryParams(fileURI);
@@ -527,40 +543,33 @@ public class VFSUtils {
         return schemeFileOptions;
     }
 
-    public static Map<String, String> parseSchemeFileOptions(String fileURI, Properties vfsProperties) {
-        String scheme = UriParser.extractScheme(fileURI);
-        if (scheme == null) {
-            return null;
-        }
-        Map<String, String> schemeFileOptions = parseSchemeFileOptions(scheme, fileURI);
-        addOptions(scheme, schemeFileOptions, vfsProperties);
-        return schemeFileOptions;
-    }
-
-    private static void addOptions(String scheme, Map<String, String> schemeFileOptions, Properties vfsProperties) {
-        if (scheme.equals(VFSConstants.SCHEME_SFTP)) {
-            for (VFSConstants.SFTP_FILE_OPTION option : VFSConstants.SFTP_FILE_OPTION.values()) {
-                String strValue = vfsProperties.getProperty(VFSConstants.SFTP_PREFIX
-                                                            + WordUtils.capitalize(option.toString()));
-                if (strValue != null && !strValue.isEmpty()) {
-                    schemeFileOptions.put(option.toString(), strValue);
-                }
+    private static void addOptions(Map<String, String> schemeFileOptions, Properties vfsProperties) {
+        for (VFSConstants.SFTP_FILE_OPTION option : VFSConstants.SFTP_FILE_OPTION.values()) {
+            String paramValue = vfsProperties.getProperty(
+                    VFSConstants.SFTP_PREFIX + WordUtils.capitalize(option.toString()));
+            if (paramValue != null && !paramValue.isEmpty()) {
+                schemeFileOptions.put(option.toString(), paramValue);
             }
         }
     }
 
-    private static void addOptions(String scheme, Map<String, String> schemeFileOptions, ParameterInclude params) throws AxisFault {
-        if (scheme.equals(VFSConstants.SCHEME_SFTP)) {
-            for (VFSConstants.SFTP_FILE_OPTION option : VFSConstants.SFTP_FILE_OPTION.values()) {
-                schemeFileOptions.put(option.toString(), ParamUtils.getOptionalParam(
-                        params, VFSConstants.SFTP_PREFIX + WordUtils.capitalize(option.toString())));
+    private static void addOptions(Map<String, String> schemeFileOptions, ParameterInclude params) {
+        for (VFSConstants.SFTP_FILE_OPTION option : VFSConstants.SFTP_FILE_OPTION.values()) {
+            String paramValue = null;
+            try {
+                paramValue = ParamUtils.getOptionalParam(
+                        params, VFSConstants.SFTP_PREFIX + WordUtils.capitalize(option.toString()));
+            } catch (AxisFault axisFault) {
+                log.error("Error while loading VFS parameter. " + axisFault.getMessage());
             }
-
-            return;
+            if (paramValue != null && !paramValue.isEmpty()) {
+                schemeFileOptions.put(option.toString(), paramValue);
+            }
         }
     }
 
-    public static FileSystemOptions attachFileSystemOptions(Map<String, String> options, FileSystemManager fsManager) throws FileSystemException, InstantiationException, IllegalAccessException {
+    public static FileSystemOptions attachFileSystemOptions(Map<String, String> options, FileSystemManager fsManager)
+            throws FileSystemException {
         if (options == null) {
             return null;
         }
@@ -568,37 +577,33 @@ public class VFSUtils {
         FileSystemOptions opts = new FileSystemOptions();
         DelegatingFileSystemOptionsBuilder delegate = new DelegatingFileSystemOptionsBuilder(fsManager);
 
-        if (VFSConstants.SCHEME_SFTP.equals(options.get(VFSConstants.SCHEME))) {
-            for (Map.Entry<String, String> entry: options.entrySet()) {
-                for (VFSConstants.SFTP_FILE_OPTION option: VFSConstants.SFTP_FILE_OPTION.values()) {
-                    if (entry.getKey().equals(option.toString()) && null != entry.getValue()) {
-                        delegate.setConfigString(opts, VFSConstants.SCHEME_SFTP,
-                                                 entry.getKey().toLowerCase(),
-                                                 entry.getValue());
-                    }
+        // setting all available configs regardless of the options.get(VFSConstants.SCHEME)
+        // because schemes of FileURI and MoveAfterProcess can be different
+
+        //sftp configs
+        for (Map.Entry<String, String> entry : options.entrySet()) {
+            for (VFSConstants.SFTP_FILE_OPTION option : VFSConstants.SFTP_FILE_OPTION.values()) {
+                if (entry.getKey().equals(option.toString()) && entry.getValue() != null) {
+                    delegate.setConfigString(opts, VFSConstants.SCHEME_SFTP, entry.getKey().toLowerCase(),
+                                             entry.getValue());
                 }
             }
-        } else if (VFSConstants.SCHEME_FTP.equals(options.get(VFSConstants.SCHEME))) {
-            addFtpConfigs(options, opts);
-        } else if (VFSConstants.SCHEME_FTPS.equals(options.get(VFSConstants.SCHEME))) {
-            addFtpsConfigs(options, opts);
         }
 
-        if (options.get(VFSConstants.FILE_TYPE) != null) {
-            delegate.setConfigString(opts, options.get(VFSConstants.SCHEME), VFSConstants.FILE_TYPE,
-                    String.valueOf(getFileType(options.get(VFSConstants.FILE_TYPE))));
-        }
-
-        return opts;
-    }
-
-    private static void addFtpsConfigs(Map<String, String> options, FileSystemOptions opts) {
         FtpsFileSystemConfigBuilder configBuilder = FtpsFileSystemConfigBuilder.getInstance();
-        boolean passiveMode = Boolean.parseBoolean(options.get(PASSIVE_MODE));
-        configBuilder.setPassiveMode(opts, passiveMode);
-        boolean implicitMode = Boolean.parseBoolean(options.get(IMPLICIT_MODE));
-        if (implicitMode) {
-            configBuilder.setFtpsType(opts, "implicit");
+
+        // ftp and ftps configs
+        String passiveMode = options.get(PASSIVE_MODE);
+        if (passiveMode != null) {
+            configBuilder.setPassiveMode(opts, Boolean.parseBoolean(passiveMode));
+        }
+
+        // ftps configs
+        String implicitMode = options.get(IMPLICIT_MODE);
+        if (implicitMode != null) {
+            if (Boolean.parseBoolean(implicitMode)) {
+                configBuilder.setFtpsType(opts, "implicit");
+            }
         }
         String protectionMode = options.get(PROTECTION_MODE);
         if ("P".equalsIgnoreCase(protectionMode)) {
@@ -630,12 +635,13 @@ public class VFSUtils {
         if (keyPassword != null) {
             configBuilder.setKeyPW(opts, keyPassword);
         }
-    }
 
-    private static void addFtpConfigs(Map<String, String> options, FileSystemOptions opts) {
-        boolean passiveMode = Boolean.parseBoolean(options.get("vfs.passive"));
-        FtpFileSystemConfigBuilder.getInstance().setPassiveMode(opts, passiveMode);
+        if (options.get(VFSConstants.FILE_TYPE) != null) {
+            delegate.setConfigString(opts, options.get(VFSConstants.SCHEME), VFSConstants.FILE_TYPE,
+                    String.valueOf(getFileType(options.get(VFSConstants.FILE_TYPE))));
+        }
 
+        return opts;
     }
 
     private static Integer getFileType(String fileType) {

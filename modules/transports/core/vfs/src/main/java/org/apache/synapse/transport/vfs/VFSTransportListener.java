@@ -458,7 +458,8 @@ public class VFSTransportListener extends AbstractPollingTransportListener<PollT
                             }
                             boolean runPostProcess = true;
                             if((!entry.isFileLockingEnabled()
-                                    || (entry.isFileLockingEnabled() && VFSUtils.acquireLock(fsManager, child, fso, true)))
+                                    || (entry.isFileLockingEnabled()
+                                        && acquireLock(fsManager, child, entry, fso, true)))
                                     && !isFailedRecord){
                                 //process the file
                                 try {
@@ -537,8 +538,8 @@ public class VFSTransportListener extends AbstractPollingTransportListener<PollT
                                 		+ "process");
                             }
                         }
-
                         close(child);
+
                         if(iFileProcessingInterval != null && iFileProcessingInterval > 0){
                         	try{
                                 if (log.isDebugEnabled()) {
@@ -546,8 +547,8 @@ public class VFSTransportListener extends AbstractPollingTransportListener<PollT
                                 }
                         		Thread.sleep(iFileProcessingInterval);
                         	}catch(InterruptedException ie){
-                        	    Thread.currentThread().interrupt();
-                        		log.error("Unable to set the interval between file processors." + ie);
+                        	    log.error("Unable to set the interval between file processors." + ie);
+                                Thread.currentThread().interrupt();
                         	}
                         }else if(iFileProcessingCount != null && iFileProcessingCount <= processCount){
                         	break;
@@ -673,7 +674,15 @@ public class VFSTransportListener extends AbstractPollingTransportListener<PollT
             }
 
             if (moveToDirectoryURI != null) {
-                FileObject moveToDirectory = fsManager.resolveFile(moveToDirectoryURI, fso);
+                // This handles when file needs to move to a different file-system
+                FileSystemOptions destinationFSO = null;
+                try {
+                    destinationFSO = VFSUtils.attachFileSystemOptions(
+                            VFSUtils.parseSchemeFileOptions(moveToDirectoryURI, entry.getParams()), fsManager);
+                } catch (Exception e) {
+                    log.warn("Unable to set options for processed file location ", e);
+                }
+                FileObject moveToDirectory = fsManager.resolveFile(moveToDirectoryURI, destinationFSO);
                 String prefix;
                 if(entry.getMoveTimestampFormat() != null) {
                     prefix = entry.getMoveTimestampFormat().format(new Date());
