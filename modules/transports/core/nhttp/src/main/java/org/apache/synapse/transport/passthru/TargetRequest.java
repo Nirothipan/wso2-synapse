@@ -56,7 +56,6 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeMap;
 import java.util.TreeSet;
 
 /**
@@ -175,9 +174,9 @@ public class TargetRequest {
 		}        
         
         
-		Object o = requestMsgCtx.getProperty(MessageContext.TRANSPORT_HEADERS);
-		if (o != null && o instanceof TreeMap) {
-			Map _headers = (Map) o;
+		Object transportHeadersObject = requestMsgCtx.getProperty(MessageContext.TRANSPORT_HEADERS);
+		if (transportHeadersObject instanceof Map) {
+			Map _headers = (Map) transportHeadersObject;
 			String trpContentType = (String) _headers.get(HTTP.CONTENT_TYPE);
 			if (trpContentType != null && !trpContentType.equals("")) {
                 if (!TargetRequestFactory.isMultipartContent(trpContentType)) {

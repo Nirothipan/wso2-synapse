@@ -18,8 +18,12 @@
  */
 package org.apache.synapse.commons.util;
 
+import java.util.Comparator;
+import java.util.Map;
+import java.util.TreeMap;
 import org.apache.axiom.om.OMElement;
 import org.apache.axiom.om.impl.builder.StAXOMBuilder;
+import org.apache.axis2.context.MessageContext;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.synapse.commons.SynapseCommonsException;
@@ -340,5 +344,22 @@ public class MiscellaneousUtil {
     private static void handleException(String msg, Exception ex) {
         log.error(msg);
         throw new SynapseCommonsException(msg, ex);
+    }
+
+    /**
+     * Set transport headers to Axis2 Message Context.
+     *
+     * @param axis2MessageCtx axis2 message context
+     * @param propertyName    property name of the transport header
+     * @param propertyValue   property value of the transport header
+     */
+    public static void setTransportHeaders(MessageContext axis2MessageCtx, String propertyName, Object propertyValue) {
+        Map<String, Object> headersMap = new TreeMap<>(new Comparator<String>() {
+            public int compare(String o1, String o2) {
+                return o1.compareToIgnoreCase(o2);
+            }
+        });
+        headersMap.put(propertyName, propertyValue);
+        axis2MessageCtx.setProperty(MessageContext.TRANSPORT_HEADERS, headersMap);
     }
 }
