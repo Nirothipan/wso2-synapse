@@ -32,6 +32,7 @@ import org.apache.axis2.addressing.RelatesTo;
 import org.apache.synapse.MessageContext;
 import org.apache.synapse.SynapseConstants;
 import org.apache.synapse.SynapseLog;
+import org.apache.synapse.commons.util.MiscellaneousUtil;
 import org.apache.synapse.config.xml.XMLConfigConstants;
 import org.apache.synapse.core.axis2.Axis2MessageContext;
 import org.apache.synapse.mediators.AbstractMediator;
@@ -39,7 +40,6 @@ import org.apache.synapse.util.xpath.SynapseXPath;
 
 import javax.xml.namespace.QName;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -187,11 +187,7 @@ public class HeaderMediator extends AbstractMediator {
 	                headersMap.put(headerName, value);
 	            }
 	            if (headers == null) {
-	                Map headersMap = new HashMap();
-	                headersMap.put(headerName, value);
-	                axis2MessageCtx.setProperty(
-	                        org.apache.axis2.context.MessageContext.TRANSPORT_HEADERS,
-	                        headersMap);    				
+                    MiscellaneousUtil.setTransportHeaders(axis2MessageCtx, headerName, value);
 	            }    
 			} else {
 	            if (synLog.isTraceOrDebugEnabled()) {

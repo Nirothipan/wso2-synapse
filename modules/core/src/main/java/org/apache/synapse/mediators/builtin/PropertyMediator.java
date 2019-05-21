@@ -23,6 +23,7 @@ import org.apache.axis2.context.OperationContext;
 import org.apache.synapse.MessageContext;
 import org.apache.synapse.SynapseLog;
 import org.apache.synapse.SynapseException;
+import org.apache.synapse.commons.util.MiscellaneousUtil;
 import org.apache.synapse.config.xml.SynapsePath;
 import org.apache.synapse.config.xml.XMLConfigConstants;
 import org.apache.synapse.config.SynapseConfigUtils;
@@ -34,7 +35,6 @@ import org.apache.axiom.om.OMElement;
 import org.apache.axis2.util.JavaUtils;
 import org.apache.http.protocol.HTTP;
 
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -172,11 +172,7 @@ public class PropertyMediator extends AbstractMediator {
                     headersMap.put(name, resultValue);
                 }
                 if (headers == null) {
-                    Map headersMap = new HashMap();
-                    headersMap.put(name, resultValue);
-                    axis2MessageCtx.setProperty(
-                            org.apache.axis2.context.MessageContext.TRANSPORT_HEADERS,
-                            headersMap);
+                    MiscellaneousUtil.setTransportHeaders(axis2MessageCtx, name, resultValue);
                 }
             }else if(XMLConfigConstants.SCOPE_OPERATION.equals(scope)
                     && synCtx instanceof Axis2MessageContext){
