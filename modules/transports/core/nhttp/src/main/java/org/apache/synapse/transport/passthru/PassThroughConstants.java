@@ -49,6 +49,8 @@ public class PassThroughConstants {
     public static final String SERIALIZED_BYTES = "SerializedBytes";
 
     public static final String CONTENT_TYPE = "CONTENT_TYPE";
+    // This property is used to get setCharacterEncoding property value
+    public static final String SET_CHARACTER_ENCODING = "setCharacterEncoding";
 
     public static final String DEFAULT_CONTENT_TYPE = "application/octet-stream";
     public static final String CONTENT_TYPE_MULTIPART_RELATED = "multipart/related";
