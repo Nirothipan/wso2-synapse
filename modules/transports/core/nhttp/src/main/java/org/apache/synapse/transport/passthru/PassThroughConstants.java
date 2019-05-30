@@ -49,7 +49,8 @@ public class PassThroughConstants {
     public static final String SERIALIZED_BYTES = "SerializedBytes";
 
     public static final String CONTENT_TYPE = "CONTENT_TYPE";
-    // This property is used to get setCharacterEncoding property value
+    // This property can be used to remove character encode. By default character encoding is enabled in the ESB profile.
+    // If this property is set to 'false', the 'CHARACTER_SET_ENCODING' property cannot be used.
     public static final String SET_CHARACTER_ENCODING = "setCharacterEncoding";
 
     public static final String DEFAULT_CONTENT_TYPE = "application/octet-stream";
