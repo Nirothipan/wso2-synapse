@@ -34,6 +34,7 @@ import org.apache.synapse.MessageContext;
 import org.apache.synapse.SynapseConstants;
 import org.apache.synapse.config.SynapsePropertiesLoader;
 import org.apache.synapse.config.xml.SynapsePath;
+import org.apache.synapse.config.xml.XMLConfigConstants;
 import org.apache.synapse.core.axis2.Axis2MessageContext;
 import org.apache.synapse.transport.passthru.config.PassThroughConfiguration;
 import org.apache.synapse.util.streaming_xpath.StreamingXPATH;
@@ -52,9 +53,12 @@ import javax.xml.xpath.XPathFactory;
 import java.io.IOException;
 import java.io.InputStream;
 
-import java.util.*;
-
-
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.StringTokenizer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * <p>XPath that has been used inside Synapse xpath processing. This has a extension function named
@@ -154,6 +158,14 @@ public class SynapseXPath extends SynapsePath {
         } else {
             contentAware = false;
         }
+        String propertyScope = getPropertyScope(xpathString);
+        // skip message building for registry, system and transport scopes
+        if (XMLConfigConstants.SCOPE_REGISTRY.equals(propertyScope)
+                || XMLConfigConstants.SCOPE_SYSTEM.equals(propertyScope)
+                || XMLConfigConstants.SCOPE_TRANSPORT.equals(propertyScope)) {
+            contentAware = false;
+            return;
+        }
 
         if(xpathString.contains("$trp") || xpathString.contains("$ctx") || xpathString.contains("$axis2")){
             contentAware = false;
@@ -183,6 +195,25 @@ public class SynapseXPath extends SynapsePath {
         }
     }
 
+    private String getPropertyScope(String xPathString) {
+       String xpath = null;
+       String scope = "";
+       if (xPathString.contains("get-property")) {
+            // extract property args
+           Matcher matcher = Pattern.compile("\\(([^)]+)\\)").matcher(xPathString);
+           if (matcher.find()) {
+               xpath = matcher.group(1);
+           }
+           if (xpath != null) {
+               String[] args = xpath.split(",");
+               if (args.length == 2) {
+                   // remove leading and trailing quotes
+                   scope = args[0].trim().replaceAll("^\'|\'$", "").trim();
+               }
+           }
+       }
+       return scope;
+    }
     /**
      * Construct an XPath expression from a given string and initialize its
      * namespace context based on a given element.
