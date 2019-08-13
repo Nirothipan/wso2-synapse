@@ -165,12 +165,12 @@ public class VFSUtils {
      * processed while it is being uploaded and/or the item is not processed by two listeners
      *
      * @param fsManager used to resolve the processing file
-     * @param fo representing the processing file item
-     * @param fso represents file system options used when resolving file from file system manager.
+     * @param fo        representing the processing file item
+     * @param fso       represents file system options used when resolving file from file system manager.
      * @return boolean true if the lock has been acquired or false if not
      */
-    public static synchronized boolean acquireLock(FileSystemManager fsManager, FileObject fo,
-                                                   FileSystemOptions fso, boolean isListener) {
+    public static synchronized boolean acquireLock(FileSystemManager fsManager, FileObject fo, FileSystemOptions fso,
+            boolean isListener) {
         return acquireLock(fsManager, fo, null, fso, isListener);
     }
 
