@@ -22,17 +22,22 @@ import org.apache.http.Header;
 import org.apache.http.HttpRequest;
 import org.apache.http.auth.AUTH;
 import org.apache.http.auth.AuthenticationException;
-import org.apache.http.auth.Credentials;
 import org.apache.http.auth.MalformedChallengeException;
+import org.apache.http.auth.UsernamePasswordCredentials;
+import org.apache.http.auth.params.AuthPNames;
 import org.apache.http.impl.auth.BasicScheme;
 import org.apache.http.message.BasicHeader;
 import org.apache.http.protocol.HttpContext;
 import org.apache.synapse.transport.passthru.PassThroughConstants;
 
+import javax.xml.bind.DatatypeConverter;
+import java.io.UnsupportedEncodingException;
+import java.nio.charset.Charset;
+
 /**
  * ProfileProxyAuthenticator will be initialized when proxy profile is configured
  */
-public class ProfileProxyAuthenticator implements ProxyAuthenticator{
+public class ProfileProxyAuthenticator implements ProxyAuthenticator {
     private ProxyConfig proxyConfig;
     private BasicScheme basicScheme;
 
@@ -50,10 +55,29 @@ public class ProfileProxyAuthenticator implements ProxyAuthenticator{
      */
     public void authenticatePreemptively(HttpRequest request, HttpContext context) throws AuthenticationException {
         String targetHost = (String) context.getAttribute(PassThroughConstants.PROXY_PROFILE_TARGET_HOST);
-        Credentials proxyCredentials = proxyConfig.getCredentialsForTargetHost(targetHost);
+        UsernamePasswordCredentials proxyCredentials = proxyConfig.getCredentialsForTargetHost(targetHost);
         if (proxyCredentials != null) {
-            Header authHeader = basicScheme.authenticate(proxyCredentials, request, context);
+            String username = proxyCredentials.getUserName();
+            String password = proxyCredentials.getPassword();
+            String usernameAndPassword = username + ":" + password;
+            byte[] bytes;
+            try {
+                bytes = usernameAndPassword.getBytes(getCredentialsCharset(request));
+            } catch (UnsupportedEncodingException e) {
+                throw new AuthenticationException("Specified a unsupported encoding for decoding", e);
+            }
+            String encoded = DatatypeConverter.printBase64Binary(bytes);
+
+            Header authHeader = new BasicHeader("Proxy-Authorization", "Basic " + encoded);
             request.addHeader(authHeader);
         }
+    }
+
+    private String getCredentialsCharset(final HttpRequest request) {
+        String charset = (String) request.getParams().getParameter(AuthPNames.CREDENTIAL_CHARSET);
+        if (charset == null) {
+            charset = Charset.forName("US-ASCII").name();
+        }
+        return charset;
     }
 }
