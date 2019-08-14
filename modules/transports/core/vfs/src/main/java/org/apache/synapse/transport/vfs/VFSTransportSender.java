@@ -412,10 +412,10 @@ public class VFSTransportSender extends AbstractTransportSender implements Manag
 
     private void acquireLockForSending(FileObject responseFile, VFSOutTransportInfo vfsOutInfo, FileSystemOptions fso)
             throws AxisFault {
-        
+
         int tryNum = 0;
         // wait till we get the lock
-        while (!VFSUtils.acquireLock(fsManager, responseFile, fso, false)) {
+        while (!VFSUtils.acquireLock(fsManager, responseFile, vfsParamDTO, fso, false)) {
             if (vfsOutInfo.getMaxRetryCount() == tryNum++) {
                 handleException("Couldn't send the message to file : "
                         + VFSUtils.maskURLPassword(responseFile.getName().getURI()) + ", unable to acquire the " +
