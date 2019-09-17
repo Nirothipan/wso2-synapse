@@ -26,6 +26,7 @@ import org.apache.synapse.MessageContext;
 import org.apache.synapse.mediators.Value;
 import org.apache.synapse.mediators.eip.EIPUtils;
 import org.apache.synapse.util.xpath.SynapseJsonPath;
+import org.apache.synapse.util.xpath.SynapseXPathConstants;
 
 import java.util.Collection;
 import java.util.HashMap;
@@ -96,7 +97,16 @@ public class TemplateContext {
                     if (expression.getExpression() instanceof SynapseJsonPath) {
                         return expression.evaluateValue(synCtx);
                     } else {
-                        return resolveExpressionValue(synCtx, expression);
+                        boolean isLegacyXPathEnabled =
+                                System.getProperty(SynapseXPathConstants.LEGACY_XPATH_CHILD_ELEMENT_ASSESS_ENABLED)
+                                        == null ? false : Boolean.parseBoolean(System.getProperty(
+                                        SynapseXPathConstants.LEGACY_XPATH_CHILD_ELEMENT_ASSESS_ENABLED));
+
+                        if (isLegacyXPathEnabled) {
+                            return expression.evaluateValue(synCtx);
+                        } else {
+                            return resolveExpressionValue(synCtx, expression);
+                        }
                     }
                 }
             } else if (expression.getKeyValue() != null) {
