@@ -34,4 +34,9 @@ public final class EIPConstants {
 
     /** Delimiter for the message sequence value */
     public static final String MESSAGE_SEQUENCE_DELEMITER = "/";
+
+    /** System property to bring back a legacy jsonpath behaviour.
+     * Related to https://github.com/wso2/product-ei/issues/4758
+     */
+    public static final String LEGACY_JSON_PATH_NOT_EXIST_NULL_ENABLED = "synapse.legacy.jsonpath.behaviour";
 }

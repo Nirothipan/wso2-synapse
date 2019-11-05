@@ -46,6 +46,7 @@ import org.apache.synapse.commons.json.JsonUtil;
 import org.apache.synapse.config.SynapsePropertiesLoader;
 import org.apache.synapse.config.xml.SynapsePath;
 import org.apache.synapse.core.axis2.Axis2MessageContext;
+import org.apache.synapse.mediators.eip.EIPConstants;
 import org.apache.synapse.mediators.eip.EIPUtils;
 import org.jaxen.JaxenException;
 
@@ -164,6 +165,12 @@ public class SynapseJsonPath extends SynapsePath {
                 return "";
             }
         }
+        boolean legacyStringValueOfEnable =
+                System.getProperty(EIPConstants.LEGACY_JSON_PATH_NOT_EXIST_NULL_ENABLED) != null &&
+                        Boolean.parseBoolean(System.getProperty(EIPConstants.LEGACY_JSON_PATH_NOT_EXIST_NULL_ENABLED));
+        if (legacyStringValueOfEnable) {
+            return legacyStringValueOf(jsonStream);
+        }
         Object read;
         try {
             read = formatJsonPathResponse(jsonPath.read(jsonStream));
@@ -182,6 +189,38 @@ public class SynapseJsonPath extends SynapsePath {
         }
         if (log.isDebugEnabled()) {
             log.debug("#stringValueOf. Evaluated JSON path <" + jsonPath.getPath() + "> : <null>.");
+        }
+        return "";
+    }
+
+    /**
+     * This method is written to bring back a legacy behaviour with a system property.
+     * This will return 'null' instead of empty string when the jsonpath does not exist
+     * @param jsonStream The json stream that should be evalauted
+     * @return evaluated string
+     */
+    private String legacyStringValueOf(final InputStream jsonStream) {
+        Object read;
+        try {
+            read = formatJsonPathResponse(jsonPath.read(jsonStream));
+            if (log.isDebugEnabled()) {
+                log.debug("#stringValueOf. Evaluated JSON path <" + jsonPath.getPath() + "> : <" + (read == null ? null : read.toString()) + ">");
+            }
+            return (null == read ? "null" : read.toString());
+        } catch (PathNotFoundException e) {
+            if (log.isDebugEnabled()) {
+                log.debug("Evaluated JSON Path does not exist. Hence returning null");
+            }
+            //returning null specifically in this instance to bring back a legacy behaviour
+            return "null";
+        } catch (IOException e) {
+            handleException("Error evaluating JSON Path <" + jsonPath.getPath() + ">", e);
+        } catch (Exception e) { // catch invalid json paths that do not match with the existing JSON payload.
+            if (log.isDebugEnabled()) {
+                log.debug("#stringValueOf. Error evaluating JSON Path <" + jsonPath.getPath()
+                        + ">. Returning empty result. Error>>> " + e.getLocalizedMessage());
+            }
+            return "";
         }
         return "";
     }
