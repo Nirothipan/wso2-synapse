@@ -29,10 +29,13 @@ import org.apache.synapse.config.SynapseConfiguration;
 import org.apache.synapse.core.SynapseEnvironment;
 import org.apache.synapse.core.axis2.Axis2MessageContext;
 import org.apache.synapse.core.axis2.Axis2SynapseEnvironment;
+import org.apache.synapse.mediators.Value;
 import org.apache.synapse.message.MessageConsumer;
 import org.apache.synapse.message.MessageProducer;
 import org.apache.synapse.message.store.AbstractMessageStore;
 import org.apache.synapse.message.store.Constants;
+import org.apache.synapse.util.xpath.SynapseXPath;
+import org.jaxen.JaxenException;
 
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
@@ -46,6 +49,8 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.List;
 import java.util.concurrent.TimeoutException;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class RabbitMQStore extends AbstractMessageStore {
 	/**
@@ -94,6 +99,11 @@ public class RabbitMQStore extends AbstractMessageStore {
     public static final String SSL_TRUSTSTORE_TYPE = "rabbitmq.connection.ssl.truststore.type";
     public static final String SSL_TRUSTSTORE_PASSWORD = "rabbitmq.connection.ssl.truststore.password";
     public static final String SSL_VERSION = "rabbitmq.connection.ssl.version";
+
+	/** regex for secure vault expression */
+	private static final String SECURE_VAULT_REGEX = "\\{(wso2:vault-lookup\\('(.*?)'\\))\\}";
+
+	private Pattern vaultLookupPattern = Pattern.compile(SECURE_VAULT_REGEX);
 	/**
 	 * RabbitMQ connection properties
 	 */
@@ -153,7 +163,8 @@ public class RabbitMQStore extends AbstractMessageStore {
 			logger.error("Cannot initialize store.");
 			return;
 		}
-		boolean initOk = initme();
+        synapseEnvironment = se;
+        boolean initOk = initme();
 		super.init(se);
 		if (initOk) {
 			logger.info(nameString() + ". Initialized... ");
@@ -170,8 +181,9 @@ public class RabbitMQStore extends AbstractMessageStore {
 				properties.put(e.getKey(), e.getValue());
 			}
 		}
-		userName = (String) parameters.get(USERNAME);
-		password = (String) parameters.get(PASSWORD);
+		userName = resolveSecureVaultExpressions((String) parameters.get(USERNAME));
+		password = resolveSecureVaultExpressions((String) parameters.get(PASSWORD));
+
 		hostName = (String) parameters.get(HOST_NAME);
 		hostPort = (String) parameters.get(HOST_PORT);
 		virtualHost = (String) parameters.get(VIRTUAL_HOST);
@@ -565,4 +577,37 @@ public class RabbitMQStore extends AbstractMessageStore {
 		}
 		return true;
 	}
+
+
+	/**
+	 * Use secure vault to secure password in JMS Message Store.
+	 *
+	 * @param value Value of password from JMS Message Store
+	 * @return the actual password from the Secure Vault Password Management.
+	 */
+	private String resolveSecureVaultExpressions(String value) {
+		//Password can be null, it is optional
+		if (value == null) {
+			return null;
+		}
+		Matcher lookupMatcher = vaultLookupPattern.matcher(value);
+		String resolvedValue = value;
+		if (lookupMatcher.find()) {
+			Value expression = null;
+			//getting the expression with out curly brackets
+			String expressionStr = lookupMatcher.group(1);
+			try {
+				expression = new Value(new SynapseXPath(expressionStr));
+			} catch (JaxenException e) {
+				throw new SynapseException("Error while building the expression : " + expressionStr, e);
+			}
+			resolvedValue = expression.evaluateValue(synapseEnvironment.createMessageContext());
+			if (StringUtils.isEmpty(resolvedValue)) {
+				logger.warn("Found Empty value for expression : " + expression.getExpression());
+				resolvedValue = "";
+			}
+		}
+		return resolvedValue;
+	}
+
 }
