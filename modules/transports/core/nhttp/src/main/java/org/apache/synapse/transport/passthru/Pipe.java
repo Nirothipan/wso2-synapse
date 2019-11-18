@@ -394,6 +394,46 @@ public class Pipe {
         }
     }
 
+    /**
+     * Returns whether buffer consumption is required or not.
+     *
+     * @return boolean
+     * @throws IOException
+     */
+    public boolean isConsumeRequired() throws IOException {
+        lock.lock();
+        boolean isInputMode = buffer.isInputMode();
+        try {
+            if (isInputMode) {
+                setOutputMode(buffer);
+            }
+            int readRemaining = buffer.remaining();
+            int readPosition = buffer.position();
+            setInputMode(buffer);
+            int writePosition = buffer.position();
+            int writeRemaining = buffer.remaining();
+            // in this method we will return true when the buffer is full when reading didn't happened :
+            // writePosition == buffer.capacity() && readPosition == 0
+            // we will return true if we have consumed the message partially and when there is remaining to read
+            return (readRemaining == 0 && writeRemaining == readPosition) ||
+                    (writePosition == buffer.capacity() && readPosition == 0);
+        } finally {
+            if (isInputMode) {
+                setInputMode(buffer);
+            }
+            lock.unlock();
+        }
+    }
+
+    /**
+     * Checks the state of the producerError property
+     *
+     * @return boolean
+     */
+    public boolean isProducerError() {
+        return producerError;
+    }
+
     private class ByteBufferInputStream extends InputStream {
 
         @Override
