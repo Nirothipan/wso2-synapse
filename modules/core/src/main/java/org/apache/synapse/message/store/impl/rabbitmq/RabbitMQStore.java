@@ -155,9 +155,8 @@ public class RabbitMQStore extends AbstractMessageStore {
 			logger.error("Cannot initialize store.");
 			return;
 		}
-        synapseEnvironment = se;
+        super.init(se);
         boolean initOk = initme();
-		super.init(se);
 		if (initOk) {
 			logger.info(nameString() + ". Initialized... ");
 		} else {
