@@ -139,7 +139,6 @@ public class ThrottleMediator extends AbstractMediator implements ManagedLifecyc
                 canAccess = doThrottleByConcurrency(isResponse, synLog);
             }
 
-
             //if the access is success through concurrency throttle and if this is a request message
             //then do access rate based throttling
             if (throttle != null && !isResponse && canAccess) {
@@ -347,6 +346,15 @@ public class ThrottleMediator extends AbstractMediator implements ManagedLifecyc
             domainName = (xForwardHost != null) ? xForwardHost : domainName;
         }
 
+        // Using a unique key to identify each api, proxy and inbound endpoint
+        String uniqueKey;
+        Object artifactName = synCtx.getProperty(SynapseConstants.ARTIFACT_NAME);
+        if (artifactName != null && !artifactName.toString().isEmpty()) {
+            uniqueKey = id + synCtx.getProperty(SynapseConstants.ARTIFACT_NAME);
+        } else {
+            uniqueKey = id;
+        }
+
         //Using remote caller domain name , If there is a throttle configuration for
         // this domain name ,then throttling will occur according to that configuration
         if (domainName != null) {
@@ -367,13 +375,13 @@ public class ThrottleMediator extends AbstractMediator implements ManagedLifecyc
                         //If this is a clustered env.
                         if (isClusteringEnable) {
                             context.setConfigurationContext(cc);
-                            context.setThrottleId(id);
+                            context.setThrottleId(uniqueKey + callerId);
                         }
 
                         try {
                             //Checks for access state
                             AccessInformation accessInformation = accessControler.canAccess(context,
-                                    callerId, ThrottleConstants.DOMAIN_BASE);
+                                    uniqueKey + callerId, ThrottleConstants.DOMAIN_BASE);
                             canAccess = accessInformation.isAccessAllowed();
 
                             if (synLog.isTraceOrDebugEnabled()) {
@@ -431,13 +439,13 @@ public class ThrottleMediator extends AbstractMediator implements ManagedLifecyc
                                 //For clustered env.
                                 if (isClusteringEnable) {
                                     context.setConfigurationContext(cc);
-                                    context.setThrottleId(id);
+                                    context.setThrottleId(uniqueKey + callerId);
                                 }
 
                                 //Checks access state
                                 AccessInformation accessInformation = accessControler.canAccess(
                                         context,
-                                        callerId,
+                                        uniqueKey + callerId,
                                         ThrottleConstants.IP_BASE);
 
                                 canAccess = accessInformation.isAccessAllowed();
@@ -532,7 +540,7 @@ public class ThrottleMediator extends AbstractMediator implements ManagedLifecyc
                                 // Creates the throttle from the policy
                                 if (throttle == null) {
                                     throttle = ThrottleFactory.createMediatorThrottle(
-                                        PolicyEngine.getPolicy((OMElement) entryValue));
+                                            PolicyEngine.getPolicy((OMElement) entryValue));
                                 }
 
                                 //For non-clustered  environment , must re-initiates
