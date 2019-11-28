@@ -33,6 +33,7 @@ import org.apache.synapse.message.MessageConsumer;
 import org.apache.synapse.message.MessageProducer;
 import org.apache.synapse.message.store.AbstractMessageStore;
 import org.apache.synapse.message.store.Constants;
+import org.apache.synapse.util.resolver.SecureVaultResolver;
 
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
@@ -94,6 +95,7 @@ public class RabbitMQStore extends AbstractMessageStore {
     public static final String SSL_TRUSTSTORE_TYPE = "rabbitmq.connection.ssl.truststore.type";
     public static final String SSL_TRUSTSTORE_PASSWORD = "rabbitmq.connection.ssl.truststore.password";
     public static final String SSL_VERSION = "rabbitmq.connection.ssl.version";
+
 	/**
 	 * RabbitMQ connection properties
 	 */
@@ -153,8 +155,8 @@ public class RabbitMQStore extends AbstractMessageStore {
 			logger.error("Cannot initialize store.");
 			return;
 		}
-		boolean initOk = initme();
-		super.init(se);
+        super.init(se);
+        boolean initOk = initme();
 		if (initOk) {
 			logger.info(nameString() + ". Initialized... ");
 		} else {
@@ -170,8 +172,9 @@ public class RabbitMQStore extends AbstractMessageStore {
 				properties.put(e.getKey(), e.getValue());
 			}
 		}
-		userName = (String) parameters.get(USERNAME);
-		password = (String) parameters.get(PASSWORD);
+		userName = SecureVaultResolver.resolve(synapseEnvironment, (String) parameters.get(USERNAME));
+		password = SecureVaultResolver.resolve(synapseEnvironment, (String) parameters.get(PASSWORD));
+
 		hostName = (String) parameters.get(HOST_NAME);
 		hostPort = (String) parameters.get(HOST_PORT);
 		virtualHost = (String) parameters.get(VIRTUAL_HOST);

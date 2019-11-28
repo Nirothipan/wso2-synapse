@@ -18,7 +18,6 @@
 
 package org.apache.synapse.message.store.impl.jms;
 
-import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.synapse.MessageContext;
@@ -27,15 +26,12 @@ import org.apache.synapse.config.SynapseConfiguration;
 import org.apache.synapse.core.SynapseEnvironment;
 import org.apache.synapse.core.axis2.Axis2MessageContext;
 import org.apache.synapse.core.axis2.Axis2SynapseEnvironment;
-import org.apache.synapse.inbound.InboundEndpoint;
-import org.apache.synapse.mediators.Value;
 import org.apache.synapse.message.MessageConsumer;
 import org.apache.synapse.message.MessageProducer;
 import org.apache.synapse.message.StoreForwardException;
 import org.apache.synapse.message.store.AbstractMessageStore;
 import org.apache.synapse.message.store.Constants;
-import org.apache.synapse.util.xpath.SynapseXPath;
-import org.jaxen.JaxenException;
+import org.apache.synapse.util.resolver.SecureVaultResolver;
 
 import javax.jms.Connection;
 import javax.jms.Destination;
@@ -499,7 +495,7 @@ public class JmsStore extends AbstractMessageStore {
             }
         }
         userName = (String) parameters.get(USERNAME);
-        password = resolveSecureVaultExpressions((String) parameters.get(PASSWORD));
+        password = SecureVaultResolver.resolve(synapseEnvironment, (String) parameters.get(PASSWORD));
 
         String conCaching = (String) parameters.get(CACHE);
         if ("true".equals(conCaching)) {
@@ -577,37 +573,6 @@ public class JmsStore extends AbstractMessageStore {
         }
         newWriteConnection();
         return true;
-    }
-
-    /**
-     * Use secure vault to secure password in JMS Message Store.
-     *
-     * @param value Value of password from JMS Message Store
-     * @return the actual password from the Secure Vault Password Management.
-     */
-    private String resolveSecureVaultExpressions(String value) {
-        //Password can be null, it is optional
-        if (value == null) {
-            return null;
-        }
-        Matcher lookupMatcher = vaultLookupPattern.matcher(value);
-        String resolvedValue = value;
-        if (lookupMatcher.find()) {
-            Value expression = null;
-            //getting the expression with out curly brackets
-            String expressionStr = lookupMatcher.group(1);
-            try {
-                expression = new Value(new SynapseXPath(expressionStr));
-            } catch (JaxenException e) {
-                throw new SynapseException("Error while building the expression : " + expressionStr, e);
-            }
-            resolvedValue = expression.evaluateValue(synapseEnvironment.createMessageContext());
-            if (StringUtils.isEmpty(resolvedValue)) {
-                log.warn("Found Empty value for expression : " + expression.getExpression());
-                resolvedValue = "";
-            }
-        }
-        return resolvedValue;
     }
 
     /**
