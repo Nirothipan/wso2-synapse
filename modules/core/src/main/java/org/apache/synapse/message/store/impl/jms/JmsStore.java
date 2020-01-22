@@ -490,8 +490,12 @@ public class JmsStore extends AbstractMessageStore {
     private boolean initme() throws StoreForwardException, JMSException {
         Set<Map.Entry<String, Object>> mapSet = parameters.entrySet();
         for (Map.Entry<String, Object> e : mapSet) {
-            if (e.getValue() instanceof String) {
-                connectionProperties.put(e.getKey(), e.getValue());
+            Object value = e.getValue();
+            if (value instanceof String) {
+                if (CONNECTION_STRING.equals(e.getKey())) {
+                    value = resolveQueueName(value);
+                }
+                connectionProperties.put(e.getKey(), value);
             }
         }
         userName = (String) parameters.get(USERNAME);
@@ -717,5 +721,18 @@ public class JmsStore extends AbstractMessageStore {
 
     public void setProducer(MessageProducer producer) {
         this.producer = producer;
+    }
+
+    public String resolveQueueName(Object param) {
+        String paramString = param.toString();
+        Matcher lookupMatcher = vaultLookupPattern.matcher(paramString);
+
+        while (lookupMatcher.find()) {
+            for (int i = 0; i < lookupMatcher.groupCount(); i++) {
+                paramString = paramString.replace(lookupMatcher.group(i), SecureVaultResolver.
+                        resolve(synapseEnvironment, lookupMatcher.group(i)));
+            }
+        }
+        return paramString;
     }
 }
