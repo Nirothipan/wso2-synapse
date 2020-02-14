@@ -115,5 +115,10 @@ final class Constants {
      */
     public static final String SYNAPSE_JSON_TO_XML_PROCESS_INSTRUCTION_ENABLE = "synapse.json.to.xml.processing.instruction.enabled";
 
+    /**
+     * Property to set whether the user expects synapse to append a default charset encoding(UTF-8)
+     * to the outgoing request
+     */
+    public static final String SET_CONTENT_TYPE_CHARACTER_ENCODING = "setCharacterEncoding";
 
 }
