@@ -319,13 +319,13 @@ public abstract class ScheduledMessageProcessor extends AbstractMessageProcessor
 		if (!preserveState) {
 			deleteMessageProcessorState();
 		}
-		if (isArtifactUpdate || !preserveState) {
-			/*
-			All the tasks need to be stopped during artifact update and re deployed so that the changes in member
-			count is captured.
-			*/
-			stop();
-		}
+        if (isArtifactUpdate || !preserveState) {
+            /*
+             * All the tasks need to be stopped during artifact update and re deployed so that the changes in member
+             * count is captured.
+             */
+            stop();
+        }
 		/*
 		 * If the Task is scheduled with an interval value < 1000 ms, it is
 		 * executed outside Quartz. For an example Task with interval 200ms.
