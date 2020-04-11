@@ -1,6 +1,6 @@
-name: Run integration tests
+name: Micro Integrator Mediation Tests
 
-on: [push]
+on: [push, pull_request]
 
 jobs:
   build:
@@ -22,8 +22,8 @@ jobs:
         echo $(cat ../SYNAPSE_VERSION_FILE)
     - name: Checkout MI
       uses: actions/checkout@v1
-      with: 
+      with:
         repository: wso2/micro-integrator
         ref: refs/heads/master
     - name: Build MI with Maven
-      run: mvn clean install -Dsynapse.version=$(cat ../SYNAPSE_VERSION_FILE) --file ../micro-integrator/pom.xml
+      run: mvn clean install -Dsynapse.version=$(cat ../SYNAPSE_VERSION_FILE) --file ../micro-integrator/pom.xml -P mediation-tests
