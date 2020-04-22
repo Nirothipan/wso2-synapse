@@ -478,6 +478,9 @@ public final class SynapseConstants {
     public static final String FORCE_ERROR_PROPERTY = "FORCE_ERROR_ON_SOAP_FAULT";
     public static final int ENDPOINT_CUSTOM_ERROR = 500000;
 
+    public static final String JMS_TRANSPORT_EXCEPTION_TRIGGER_TYPE = "JMS_TRANSPORT_EXCEPTION_TRIGGER_TYPE";
+    public static final String JMS_INVALID_MESSAGE_TYPE_EXCEPTION = "JMS_INVALID_MESSAGE_TYPE_EXCEPTION";
+    public static final int JMS_INVALID_MESSAGE_TYPE_ERROR = 101550;
 
     // Fail-safe mode properties
     public static final String FAIL_SAFE_MODE_STATUS = "failsafe.mode.enable";

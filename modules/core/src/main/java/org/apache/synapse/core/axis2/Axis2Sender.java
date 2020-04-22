@@ -27,6 +27,7 @@ import org.apache.axiom.soap.SOAPFactory;
 import org.apache.axiom.util.UIDGenerator;
 import org.apache.axis2.AxisFault;
 import org.apache.axis2.Constants;
+import org.apache.axis2.transport.jms.AxisBaseTransportException;
 import org.apache.axis2.addressing.AddressingConstants;
 import org.apache.axis2.addressing.AddressingHelper;
 import org.apache.axis2.context.MessageContext;
@@ -86,7 +87,12 @@ public class Axis2Sender {
                     endpoint,
                     // The Axis2 Message context of the Synapse MC
                     synapseInMessageContext);
-        } catch (Exception e) {
+        } catch (AxisBaseTransportException e) {
+            synapseInMessageContext.setProperty(SynapseConstants.JMS_TRANSPORT_EXCEPTION_TRIGGER_TYPE,
+                    SynapseConstants.JMS_INVALID_MESSAGE_TYPE_EXCEPTION);
+            handleException("Invalid JMS message type received by the JMS transport", e);
+        }
+        catch (Exception e) {
             handleException("Unexpected error during sending message out", e);
         }
     }
