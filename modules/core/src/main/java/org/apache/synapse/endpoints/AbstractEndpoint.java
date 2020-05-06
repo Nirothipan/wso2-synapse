@@ -495,6 +495,10 @@ public abstract class AbstractEndpoint extends FaultHandler implements Endpoint,
         Integer errorCode = (Integer) synCtx.getProperty(SynapseConstants.ERROR_CODE);
         if (errorCode != null) {
             if (definition.getSuspendErrorCodes().isEmpty()) {
+                // if suspend codes are not defined, axis2 non suspension error code to be considered.
+                if (errorCode == SynapseConstants.AXIS2_NON_SUSPENSION_ERROR) {
+                    return false;
+                }
                 // if suspend codes are not defined, any error will be fatal for the endpoint
                 if (log.isDebugEnabled()) {
                     log.debug(this.toString() + " encountered a fatal error : " + errorCode);

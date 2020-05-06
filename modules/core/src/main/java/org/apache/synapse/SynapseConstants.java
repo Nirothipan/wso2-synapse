@@ -214,6 +214,9 @@ public final class SynapseConstants {
         /** The default/generic error code */
         public static final int DEFAULT_ERROR= 0;
 
+    // Error code from axis2 indicating not to suspend endpoint on error.
+    public static final int AXIS2_NON_SUSPENSION_ERROR = 101550;
+
     /** An Axis2 message context property that indicates the maximum time to spend on sending the message */
     public static final String SEND_TIMEOUT = "SEND_TIMEOUT";
 
