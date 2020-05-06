@@ -481,8 +481,6 @@ public final class SynapseConstants {
     public static final String JMS_TRANSPORT_EXCEPTION_TRIGGER_TYPE = "JMS_TRANSPORT_EXCEPTION_TRIGGER_TYPE";
     public static final String JMS_INVALID_MESSAGE_TYPE_EXCEPTION = "JMS_INVALID_MESSAGE_TYPE_EXCEPTION";
     public static final int JMS_INVALID_MESSAGE_TYPE_ERROR = 101550;
-    //This is the prefix used in axis2-transport's jms transport
-    public static final String PREFIX_JMS_UNSUPPORTED_MESSAGE_TYPE = "Unsupported JMS message type";
 
     // Fail-safe mode properties
     public static final String FAIL_SAFE_MODE_STATUS = "failsafe.mode.enable";

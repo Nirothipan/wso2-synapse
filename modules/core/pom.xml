@@ -208,7 +208,6 @@
                     <!--<artifactId>jms</artifactId>-->
                 <!--</exclusion>-->
             <!--</exclusions>-->
-			<scope>test</scope>
         </dependency>
 		<dependency>
 			<groupId>org.apache.axis2.transport</groupId>
