@@ -92,10 +92,6 @@
                     <groupId>org.wso2.orbit.com.github.fge</groupId>
                     <artifactId>json-schema-validator-all</artifactId>
                 </exclusion>
-                <exclusion>
-                    <groupId>org.apache.axis2.transport</groupId>
-                    <artifactId>axis2-transport-jms</artifactId>
-                </exclusion>
             </exclusions>
         </dependency>
         <dependency>
@@ -107,10 +103,6 @@
                 <exclusion>
                     <groupId>org.wso2.orbit.com.github.fge</groupId>
                     <artifactId>json-schema-validator-all</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>org.apache.axis2.transport</groupId>
-                    <artifactId>axis2-transport-jms</artifactId>
                 </exclusion>
             </exclusions>
         </dependency>
