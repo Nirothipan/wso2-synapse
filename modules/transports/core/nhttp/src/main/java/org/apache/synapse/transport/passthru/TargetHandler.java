@@ -313,7 +313,7 @@ public class TargetHandler implements NHttpClientEventHandler {
             }
 
             int statusCode = response.getStatusLine().getStatusCode();
-            if (!canProceedMsgProcessing(statusCode)) {
+            if (shouldStopProcessingFurther(statusCode)) {
                 if (log.isDebugEnabled()) {
                     log.debug("Received : " + statusCode + " for " + conn);
                 }
@@ -442,7 +442,7 @@ public class TargetHandler implements NHttpClientEventHandler {
      * @param httpStatusCode status code of the response
      * @return whether to proceed further or not
      */
-    private boolean canProceedMsgProcessing(int httpStatusCode) {
+    private boolean shouldStopProcessingFurther(int httpStatusCode) {
 
         /**
          * When the response status code is 1xx we ignore. Also when the back end responds with 408 also we ignore.
