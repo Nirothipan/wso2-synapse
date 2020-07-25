@@ -51,6 +51,9 @@ import org.apache.synapse.transport.passthru.jmx.PassThroughTransportMetricsColl
 
 import java.io.IOException;
 import java.net.SocketAddress;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
@@ -115,6 +118,11 @@ public class TargetHandler implements NHttpClientEventHandler {
         HostConnections pool = (HostConnections) o;
         conn.getContext().setAttribute(PassThroughConstants.CONNECTION_POOL, pool);
         HttpRoute route = pool.getRoute();
+
+        DateFormat df = new SimpleDateFormat("YYYY-MM-DD HH:MM:SS.sss");
+        Date dateobj = new Date();
+        conn.getContext().setAttribute("State_4", "connected atleast once at " + df.format(dateobj));
+        conn.getContext().setAttribute("State_0", "connected  ");
           
         // create the connection information and set it to request ready
         TargetContext.create(conn, ProtocolState.REQUEST_READY, targetConfiguration);
@@ -139,6 +147,9 @@ public class TargetHandler implements NHttpClientEventHandler {
     public void requestReady(NHttpClientConnection conn) {
         HttpContext context = conn.getContext();
         ProtocolState connState = null;
+
+        conn.getContext().setAttribute("State_1", "request ready  ");
+
         try {
             
             connState = TargetContext.getState(conn);
@@ -215,6 +226,8 @@ public class TargetHandler implements NHttpClientEventHandler {
     public void outputReady(NHttpClientConnection conn, ContentEncoder encoder) {
         ProtocolState connState = null;
         MessageContext requestMsgCtx = TargetContext.get(conn).getRequestMsgCtx();
+        conn.getContext().setAttribute("State_2", "output ready  ");
+
         try {
             connState = TargetContext.getState(conn);
             if (connState != ProtocolState.REQUEST_HEAD &&
@@ -313,17 +326,23 @@ public class TargetHandler implements NHttpClientEventHandler {
             }
 
             int statusCode = response.getStatusLine().getStatusCode();
-            if (statusCode < HttpStatus.SC_OK) {
+            if (!canProceedMsgProcessing(statusCode)) {
                 if (log.isDebugEnabled()) {
-                    log.debug(conn + ": Received a 100 Continue response");
+                    log.debug("Received : " + statusCode + " for " + conn);
                 }
-                // Ignore 1xx response
                 return;
             }
             boolean isError = false;
         	context.setAttribute(PassThroughConstants.RES_HEADER_ARRIVAL_TIME, System.currentTimeMillis());
             connState = TargetContext.getState(conn);
             MessageContext requestMsgContext = TargetContext.get(conn).getRequestMsgCtx();
+
+            DateFormat df = new SimpleDateFormat("YYYY-MM-DD HH:MM:SS.sss");
+            Date dateobj = new Date();
+            conn.getContext().setAttribute("State_5", "current time " + df.format(dateobj));
+            if (requestMsgContext == null) {
+                log.error("Request msg ctx is null :::::::::::::::::::::::::::::::::::::::::::::::;");
+            }
             NHttpServerConnection sourceConn =
                     (NHttpServerConnection) requestMsgContext.getProperty(PassThroughConstants.PASS_THROUGH_SOURCE_CONNECTION);
 
@@ -435,6 +454,10 @@ public class TargetHandler implements NHttpClientEventHandler {
             TargetContext.updateState(conn, ProtocolState.CLOSED);
             targetConfiguration.getConnections().shutdownConnection(conn, true);
         }
+    }
+
+    private boolean canProceedMsgProcessing(int httpStatusCode) {
+        return httpStatusCode < HttpStatus.SC_OK || httpStatusCode == HttpStatus.SC_REQUEST_TIMEOUT;
     }
 
     private boolean handle202(MessageContext requestMsgContext) throws AxisFault {

@@ -33,9 +33,13 @@ import org.apache.synapse.transport.passthru.config.TargetConfiguration;
 import org.apache.synapse.transport.passthru.connections.TargetConnections;
 import org.apache.synapse.transport.passthru.util.TargetRequestFactory;
 
+import java.io.IOException;
 import java.io.OutputStream;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
@@ -226,7 +230,8 @@ public class DeliveryAgent {
             lock.unlock();
         }
 
-        while (queue.size() > 0) {
+        //lets stay connected but not send msg :p
+       while (queue.size() > 0) {
             if(conn == null) {
                 conn = targetConnections.getExistingConnection(route);
             }
@@ -244,7 +249,16 @@ public class DeliveryAgent {
         //releasing the connection to pool when connection is not null and message queue is empty,
         //otherwise connection remains in busyConnections pool till it gets timeout and It is not used.
         if(conn != null && TargetContext.getState(conn) == ProtocolState.REQUEST_READY) {
+//            try {
+//                conn.close();
+//            } catch (IOException e) {
+//                e.printStackTrace();
+//            }
             targetConfiguration.getConnections().releaseConnection(conn);
+            DateFormat df = new SimpleDateFormat("YYYY-MM-DD HH:MM:SS.sss");
+            Date dateobj = new Date();
+            conn.getContext().setAttribute("State_0", "released to pool since queue is empty at " + df.format(dateobj)
+            + " queue size = " + queue.size() );
         }
     }
 

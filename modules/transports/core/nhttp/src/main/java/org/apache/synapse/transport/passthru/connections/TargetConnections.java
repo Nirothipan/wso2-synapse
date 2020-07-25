@@ -31,6 +31,9 @@ import org.apache.synapse.transport.passthru.config.TargetConfiguration;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -174,6 +177,14 @@ public class TargetConnections {
 
         TargetContext.get(conn).reset(false);
 
+        DateFormat df = new SimpleDateFormat("YYYY-MM-DD HH:MM:SS.sss");
+        Date dateobj = new Date();
+        conn.getContext().setAttribute("State_0", "released " + df.format(dateobj));
+        conn.getContext().setAttribute("State_1", "released  " + df.format(dateobj));
+        conn.getContext().setAttribute("State_2", "released  " + df.format(dateobj));
+
+
+
         if (pool != null) {
             pool.release(conn);
         } else {
@@ -233,8 +244,7 @@ public class TargetConnections {
                     try {
                         NHttpClientConnection connection = connectionsEntry.getValue().getConnection();
                         if (connection != null && connection.getContext() != null) {
-
-                            shutdownConnection(connectionsEntry.getValue().getConnection());
+                            shutdownConnection(connection);
                             log.info("Connection " + httpRoute.getTargetHost().getHostName() + ":"
                                      + httpRoute.getTargetHost().getPort() + " Successful");
 
