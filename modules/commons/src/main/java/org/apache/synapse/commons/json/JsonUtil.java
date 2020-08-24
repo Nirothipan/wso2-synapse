@@ -18,9 +18,15 @@
 
 package org.apache.synapse.commons.json;
 
+import java.io.BufferedReader;
+import java.io.OutputStreamWriter;
+import java.nio.charset.Charset;
 import java.util.HashMap;
 import java.util.Map;
+
+import org.apache.axiom.om.OMOutputFormat;
 import org.apache.axiom.om.impl.llom.OMElementImpl;
+import org.apache.axis2.builder.BuilderUtil;
 import org.apache.axis2.transport.http.HTTPConstants;
 import org.apache.synapse.commons.SynapseCommonsException;
 import org.apache.synapse.commons.staxon.core.json.JsonXMLConfig;
@@ -1165,7 +1171,29 @@ public final class JsonUtil {
             if (json.markSupported()) {
                 json.reset();
             }
-            IOUtils.copy(json, out); // Write the JSON stream
+            String outboundCharSetEncoding = (String) messageContext
+                    .getProperty(org.apache.axis2.Constants.Configuration.CHARACTER_SET_ENCODING);
+            String contentType =
+                    (String) messageContext.getProperty(org.apache.axis2.Constants.Configuration.CONTENT_TYPE);
+            String inboundCharSetEncoding = BuilderUtil.getCharSetEncoding(contentType);
+
+            if (outboundCharSetEncoding == null || ((outboundCharSetEncoding.equalsIgnoreCase(inboundCharSetEncoding))
+                    && outboundCharSetEncoding.equalsIgnoreCase(Charset.defaultCharset().toString()))) {
+                IOUtils.copy(json, out); // Write the JSON stream
+            } else {
+                byte[] inboundBuffer = IOUtils.toByteArray(json);
+                byte[] outboundBuffer;
+                if (inboundCharSetEncoding == null
+                        || inboundCharSetEncoding.equalsIgnoreCase(Charset.defaultCharset().toString())) {
+                    outboundBuffer = new String(inboundBuffer).getBytes(outboundCharSetEncoding);
+                } else {
+                    outboundBuffer =
+                            new String(new String(inboundBuffer).getBytes(inboundCharSetEncoding),
+                                    outboundCharSetEncoding).getBytes();
+                }
+                out.write(outboundBuffer);
+            }
+
             if (messageContext.getProperty(PRESERVE_JSON_STREAM) != null) {
                 if (json.markSupported()) {
                     json.reset();
