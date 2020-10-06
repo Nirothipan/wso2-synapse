@@ -433,7 +433,7 @@ public class Axis2FlexibleMEPClient {
             }
 
             String endPointName = endpoint.leafEndpoint.getName();
-            if (System.getProperty(SYNAPSE_TEST).equals(TRUE) && (synapseOutMessageContext.getConfiguration().
+            if (TRUE.equals(System.getProperty(SYNAPSE_TEST)) && (synapseOutMessageContext.getConfiguration().
                     getProperty(org.apache.synapse.unittest.Constants.IS_RUNNING_AS_UNIT_TEST) != null &&
                     synapseOutMessageContext.getConfiguration().getProperty
                             (org.apache.synapse.unittest.Constants.IS_RUNNING_AS_UNIT_TEST).equals(TRUE)) &&
