@@ -33,8 +33,8 @@ import org.apache.synapse.aspects.AspectConfiguration;
 import org.apache.synapse.aspects.ComponentType;
 import org.apache.synapse.aspects.flow.statistics.StatisticIdentityGenerator;
 import org.apache.synapse.aspects.flow.statistics.data.artifact.ArtifactHolder;
-import org.apache.synapse.config.xml.rest.VersionStrategyFactory;
 import org.apache.synapse.commons.CorrelationConstants;
+import org.apache.synapse.config.xml.rest.VersionStrategyFactory;
 import org.apache.synapse.core.SynapseEnvironment;
 import org.apache.synapse.core.axis2.Axis2MessageContext;
 import org.apache.synapse.rest.dispatch.DispatcherHelper;
@@ -48,7 +48,6 @@ import org.apache.synapse.transport.http.conn.SynapseWireLogHolder;
 import org.apache.synapse.transport.nhttp.NhttpConstants;
 import org.apache.synapse.transport.passthru.PassThroughConstants;
 import org.apache.synapse.transport.passthru.config.PassThroughConfiguration;
-import org.apache.synapse.transport.passthru.config.SourceConfiguration;
 import org.apache.synapse.util.logging.LoggingUtils;
 
 import java.util.ArrayList;
@@ -426,6 +425,10 @@ public class API extends AbstractRESTProcessor implements ManagedLifecycle, Aspe
             for (RESTDispatcher dispatcher : RESTUtils.getDispatchers()) {
                 Resource resource = dispatcher.findResource(synCtx, acceptableResources);
                 if (resource != null) {
+                    if (!validRequest(subPath, synCtx)) {
+                        log.error("Internal resource called directly and not via inbound endpoint");
+                        break;
+                    }
                     if (synCtx.getEnvironment().isDebuggerEnabled()) {
                         if (!synCtx.isResponse()) {
                             SynapseWireLogHolder wireLogHolder = (SynapseWireLogHolder) ((Axis2MessageContext) synCtx).getAxis2MessageContext()
@@ -476,6 +479,18 @@ public class API extends AbstractRESTProcessor implements ManagedLifecycle, Aspe
                 msgCtx.setProperty("NIO-ACK-Requested", true);
             }
         }
+    }
+
+    private boolean validRequest(String subPath, MessageContext synctx) {
+
+        if (subPath.startsWith("/webhook_wso2_internal/")) {
+            Object internalInboundProperty = synctx.getProperty(SynapseConstants.IS_INBOUND);
+            if (internalInboundProperty != null){
+                return (Boolean) internalInboundProperty;
+            }
+            return false;
+        }
+        return true;
     }
 
     /**
