@@ -33,10 +33,11 @@ import org.apache.synapse.aspects.AspectConfiguration;
 import org.apache.synapse.aspects.ComponentType;
 import org.apache.synapse.aspects.flow.statistics.StatisticIdentityGenerator;
 import org.apache.synapse.aspects.flow.statistics.data.artifact.ArtifactHolder;
-import org.apache.synapse.config.xml.rest.VersionStrategyFactory;
 import org.apache.synapse.commons.CorrelationConstants;
+import org.apache.synapse.config.xml.rest.VersionStrategyFactory;
 import org.apache.synapse.core.SynapseEnvironment;
 import org.apache.synapse.core.axis2.Axis2MessageContext;
+import org.apache.synapse.core.axis2.Axis2SynapseEnvironment;
 import org.apache.synapse.rest.dispatch.DispatcherHelper;
 import org.apache.synapse.rest.dispatch.RESTDispatcher;
 import org.apache.synapse.rest.version.DefaultStrategy;
@@ -48,7 +49,6 @@ import org.apache.synapse.transport.http.conn.SynapseWireLogHolder;
 import org.apache.synapse.transport.nhttp.NhttpConstants;
 import org.apache.synapse.transport.passthru.PassThroughConstants;
 import org.apache.synapse.transport.passthru.config.PassThroughConfiguration;
-import org.apache.synapse.transport.passthru.config.SourceConfiguration;
 import org.apache.synapse.util.logging.LoggingUtils;
 
 import java.util.ArrayList;
@@ -93,6 +93,11 @@ public class API extends AbstractRESTProcessor implements ManagedLifecycle, Aspe
      * Comment Texts List associated with the API
      */
     private List<String> commentsList = new ArrayList<String>();
+
+    /**
+     * The prefix of resources which are internal. i.e which can be invoked via an inbound only.
+     */
+    private List<String> internalResourcePrefixList = new ArrayList<String>();
 
     public API(String name, String context) {
         super(name);
@@ -425,6 +430,13 @@ public class API extends AbstractRESTProcessor implements ManagedLifecycle, Aspe
         if (!acceptableResources.isEmpty()) {
             for (RESTDispatcher dispatcher : RESTUtils.getDispatchers()) {
                 Resource resource = dispatcher.findResource(synCtx, acceptableResources);
+                if (!isValidRequest(subPath, synCtx)) {
+                    if (log.isDebugEnabled()) {
+                        log.debug("Internal resource with sub path, '" + subPath + "' called directly without fronting "
+                                          + "with an inbound endpoint");
+                    }
+                    break;
+                }
                 if (resource != null) {
                     if (synCtx.getEnvironment().isDebuggerEnabled()) {
                         if (!synCtx.isResponse()) {
@@ -476,6 +488,28 @@ public class API extends AbstractRESTProcessor implements ManagedLifecycle, Aspe
                 msgCtx.setProperty("NIO-ACK-Requested", true);
             }
         }
+    }
+
+    /**
+     * Checks whether the resource is an internal one, and if so validates whether is called fronted via an inbound
+     * endpoint and not directly.
+     *
+     * @param subPath sub path of the resource.
+     * @param synCtx  synapse message context.
+     * @return result of validation.
+     */
+    private boolean isValidRequest(String subPath, MessageContext synCtx) {
+
+        for (String resource : internalResourcePrefixList) {
+            if (subPath.startsWith(resource)) {
+                Object internalInboundProperty = synCtx.getProperty(SynapseConstants.IS_INBOUND);
+                if (internalInboundProperty != null) {
+                    return (Boolean) internalInboundProperty;
+                }
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
@@ -548,6 +582,7 @@ public class API extends AbstractRESTProcessor implements ManagedLifecycle, Aspe
                 ((ManagedLifecycle) handler).init(se);
             }
         }
+        this.internalResourcePrefixList = ((Axis2SynapseEnvironment) se).getInternalResourcePrefixList();
     }
 
     private String getFormattedLog(String msg) {
@@ -565,6 +600,7 @@ public class API extends AbstractRESTProcessor implements ManagedLifecycle, Aspe
                 ((ManagedLifecycle) handler).destroy();
             }
         }
+        internalResourcePrefixList.clear();
     }
 
     public VersionStrategy getVersionStrategy() {
