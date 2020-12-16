@@ -62,6 +62,7 @@ import org.apache.synapse.transport.passthru.jmx.MBeanRegistrar;
 import org.apache.synapse.transport.passthru.jmx.PassThroughTransportMetricsCollector;
 import org.apache.synapse.transport.passthru.jmx.TransportView;
 import org.apache.synapse.transport.passthru.util.PassThroughTransportUtils;
+import org.apache.synapse.transport.passthru.util.RelayConstants;
 import org.apache.synapse.transport.passthru.util.RelayUtils;
 import org.apache.synapse.transport.passthru.util.SourceResponseFactory;
 import org.wso2.caching.CachingConstants;
@@ -535,6 +536,13 @@ public class PassThroughHttpSender extends AbstractHandler implements TransportS
         SourceResponse sourceResponse = SourceResponseFactory.create(msgContext,
                 sourceRequest, sourceConfiguration);
         sourceResponse.checkResponseChunkDisable(msgContext);
+
+        Object sourceResponseControl = msgContext.getProperty(RelayConstants.SRC_RES_STREAM_CONTROL_OBJ);
+        if (sourceResponseControl != null) {
+            conn.getContext().setAttribute(RelayConstants.SRC_RES_STREAM_CONTROL_OBJ, sourceResponseControl);
+            conn.getContext().setAttribute(RelayConstants.SRC_RES_STREAM_CONTROL_OBJ_PROP,
+                                           msgContext.getProperty(RelayConstants.SRC_RES_STREAM_CONTROL_OBJ_PROP));
+        }
 
         SourceContext.setResponse(conn, sourceResponse);
 

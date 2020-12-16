@@ -46,4 +46,10 @@ public final class RelayConstants {
             new QName("http://ws.apache.org/commons/ns/payload", "binary");
 
     public static final String FORCE_RESPONSE_EARLY_BUILD = "FORCE_RESPONSE_EARLY_BUILD";
+
+    public static final String SRC_RES_STREAM_CONTROL_OBJ = "SOURCE_RESPONSE_STREAM_CONTROL_OBJECT";
+    public static final String SRC_RES_STREAM_CONTROL_OBJ_PROP = "SOURCE_RESPONSE_STREAM_CONTROL_OBJECT_PROPERTIES";
+
+    public static final String IGNORE_EXCEPTION = "IGNORE_EXCEPTION";
+
 }

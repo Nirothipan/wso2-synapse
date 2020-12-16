@@ -16,20 +16,24 @@
 
 package org.apache.synapse.transport.passthru;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.http.MalformedChunkCodingException;
 import org.apache.http.nio.ContentDecoder;
 import org.apache.http.nio.ContentEncoder;
 import org.apache.http.nio.IOControl;
-import org.apache.http.params.HttpConnectionParams;
 import org.apache.http.nio.NHttpClientConnection;
 import org.apache.http.nio.NHttpServerConnection;
+import org.apache.http.params.HttpConnectionParams;
 import org.apache.synapse.transport.passthru.config.BaseConfiguration;
 import org.apache.synapse.transport.passthru.config.PassThroughConfiguration;
 import org.apache.synapse.transport.passthru.util.ControlledByteBuffer;
+import org.apache.synapse.transport.passthru.util.RelayUtils;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.ByteBuffer;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
@@ -39,6 +43,7 @@ import java.util.concurrent.locks.ReentrantLock;
  * This is a buffer shared by both producers and consumers.
  */
 public class Pipe {
+    private static Log log = LogFactory.getLog(Pipe.class);
 
     public static final int DEFAULT_TIME_OUT_VALUE = 180000;
 
@@ -142,48 +147,92 @@ public class Pipe {
         }
 
         lock.lock();
-        ControlledByteBuffer consumerBuffer;
-        if (outputBuffer != null) {
-            consumerBuffer = outputBuffer;
-        } else {
-            consumerBuffer = buffer;
-        }
+        ControlledByteBuffer consumerBuffer = getConsumerBuffer();
         try {
             // if producer at error we have to stop the encoding and return immediately
             if (producerError) {
                 encoder.complete();
                 return -1;
             }
-
             setOutputMode(consumerBuffer);
             int bytesWritten = encoder.write(consumerBuffer.getByteBuffer());
-            setInputMode(consumerBuffer);
-
-            if (consumerBuffer.position() == 0) {
-                if (outputBuffer == null) {
-                    if (producerCompleted) {
-                        encoder.complete();
-                    } else {
-                        // buffer is empty. Wait until the producer fills up
-                        // the buffer
-                        consumerIoControl.suspendOutput();
-                    }
-                } else if (serializationComplete || rawSerializationComplete) {
-                    encoder.complete();
-                }
-            }
-
-            if (bytesWritten > 0) {
-                if (!encoder.isCompleted() && !producerCompleted && hasHttpProducer) {
-                    producerIoControl.requestInput();
-                }
-            }
-
-            writeCondition.signalAll();
+            consumeHelper(consumerBuffer, encoder, bytesWritten);
             return bytesWritten;
         } finally {
             lock.unlock();
         }
+    }
+
+    private ControlledByteBuffer getConsumerBuffer(){
+
+        ControlledByteBuffer consumerBuffer;
+        if (outputBuffer != null) {
+            consumerBuffer = outputBuffer;
+        } else {
+            consumerBuffer = buffer;
+        }
+        return consumerBuffer;
+    }
+
+    public ByteBuffer copyAndConsume(final ContentEncoder encoder) throws IOException {
+
+        if (consumerIoControl == null) {
+            throw new IllegalStateException("Consumer cannot be null when calling consume");
+        }
+
+        if (hasHttpProducer && producerIoControl == null) {
+            throw new IllegalStateException("Producer cannot be null when calling consume");
+        }
+
+        lock.lock();
+        ControlledByteBuffer consumerBuffer = getConsumerBuffer();
+        try {
+            // if producer at error we have to stop the encoding and return immediately
+            if (producerError) {
+                encoder.complete();
+                return null;
+            }
+            setOutputMode(consumerBuffer);
+
+            // clone original buffer
+            ByteBuffer originalBuffer = consumerBuffer.getByteBuffer();
+            ByteBuffer duplicate = RelayUtils.cloneBuffer(originalBuffer);
+
+            int bytesWritten = encoder.write(consumerBuffer.getByteBuffer());
+
+            // replicate positions of original buffer in duplicated buffer
+            int position = originalBuffer.position();
+            duplicate.limit(position);
+            duplicate.position(position - bytesWritten);
+
+            consumeHelper(consumerBuffer, encoder, bytesWritten);
+            return duplicate;
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    private void consumeHelper(ControlledByteBuffer consumerBuffer, ContentEncoder encoder, int bytesWritten)
+            throws IOException {
+
+        setInputMode(consumerBuffer);
+        if (consumerBuffer.position() == 0) {
+            if (outputBuffer == null) {
+                if (producerCompleted) {
+                    encoder.complete();
+                } else {
+                    // buffer is empty. Wait until the producer fills up
+                    // the buffer
+                    consumerIoControl.suspendOutput();
+                }
+            } else if (serializationComplete || rawSerializationComplete) {
+                encoder.complete();
+            }
+        }
+        if (bytesWritten > 0 && !encoder.isCompleted() && !producerCompleted && hasHttpProducer) {
+            producerIoControl.requestInput();
+        }
+        writeCondition.signalAll();
     }
 
     /**

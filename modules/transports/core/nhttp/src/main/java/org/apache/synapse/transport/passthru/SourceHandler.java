@@ -18,7 +18,14 @@ package org.apache.synapse.transport.passthru;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.apache.http.*;
+import org.apache.http.ConnectionClosedException;
+import org.apache.http.Header;
+import org.apache.http.HttpException;
+import org.apache.http.HttpHeaders;
+import org.apache.http.HttpRequest;
+import org.apache.http.HttpResponse;
+import org.apache.http.HttpStatus;
+import org.apache.http.HttpVersion;
 import org.apache.http.message.BasicHttpResponse;
 import org.apache.http.nio.ContentDecoder;
 import org.apache.http.nio.ContentEncoder;
@@ -33,8 +40,8 @@ import org.apache.http.params.DefaultedHttpParams;
 import org.apache.http.protocol.ExecutionContext;
 import org.apache.http.protocol.HTTP;
 import org.apache.http.protocol.HttpContext;
-import org.apache.synapse.commons.jmx.ThreadingView;
 import org.apache.synapse.commons.CorrelationConstants;
+import org.apache.synapse.commons.jmx.ThreadingView;
 import org.apache.synapse.commons.logger.ContextAwareLogger;
 import org.apache.synapse.commons.transaction.TranscationManger;
 import org.apache.synapse.commons.util.MiscellaneousUtil;
@@ -45,15 +52,17 @@ import org.apache.synapse.transport.passthru.config.SourceConfiguration;
 import org.apache.synapse.transport.passthru.jmx.LatencyCollector;
 import org.apache.synapse.transport.passthru.jmx.LatencyView;
 import org.apache.synapse.transport.passthru.jmx.PassThroughTransportMetricsCollector;
+import org.apache.synapse.transport.passthru.util.RelayConstants;
 
-import javax.net.ssl.SSLException;
-import javax.ws.rs.HttpMethod;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 import java.util.UUID;
+import javax.net.ssl.SSLException;
+import javax.ws.rs.HttpMethod;
 
 /**
  * This is the class where transport interacts with the client. This class
@@ -324,7 +333,7 @@ public class SourceHandler implements NHttpServerEventHandler {
                         }
                     }
                 }
-            
+
                 response.start(conn);
                 conn.getContext().setAttribute(PassThroughConstants.RES_TO_CLIENT_WRITE_START_TIME,
                         System.currentTimeMillis());
@@ -397,8 +406,27 @@ public class SourceHandler implements NHttpServerEventHandler {
 
             SourceResponse response = SourceContext.getResponse(conn);
 
-            int bytesSent = response.write(conn, encoder);
-            
+            int bytesSent;
+            Object sourceResponseControl = conn.getContext().getAttribute(RelayConstants.SRC_RES_STREAM_CONTROL_OBJ);
+            if (sourceResponseControl != null) {
+                ByteBuffer bytesSentDuplicate = response.copyAndWrite(conn, encoder);
+                bytesSent = bytesSentDuplicate.position();
+                Long tid = Thread.currentThread().getId();
+                Map<String, Object> properties = (Map<String, Object>) conn.getContext().getAttribute(
+                        RelayConstants.SRC_RES_STREAM_CONTROL_OBJ_PROP);
+                properties.put("thread-id", tid);
+                StreamInterceptor interceptor = (StreamInterceptor) sourceResponseControl;
+                boolean result = interceptor.proceedSourceResponse(bytesSentDuplicate, properties);
+                if (!result) {
+                    log.info("Cannot proceed !!!");
+                    conn.getContext().setAttribute(RelayConstants.IGNORE_EXCEPTION, Boolean.TRUE);
+                    SourceContext.updateState(conn, ProtocolState.CLOSING);
+                    sourceConfiguration.getSourceConnections().shutDownConnection(conn, true);
+                }
+            } else {
+                bytesSent = response.write(conn, encoder);
+            }
+
 			if (encoder.isCompleted()) {
                 HttpContext context = conn.getContext();
                 long departure = System.currentTimeMillis();
@@ -585,6 +613,12 @@ public class SourceHandler implements NHttpServerEventHandler {
 
     public void exception(NHttpServerConnection conn, Exception ex) {
     	boolean isFault = false;
+
+        Object ignoreException = conn.getContext().getAttribute(RelayConstants.IGNORE_EXCEPTION);
+        if (ignoreException != null && (Boolean) ignoreException) {
+            return;
+        }
+
         if (ex instanceof IOException) {
             logIOException(conn, (IOException) ex);
             if (sourceConfiguration.isCorrelationLoggingEnabled()) {
